@@ -1,0 +1,72 @@
+import { useState, useCallback } from 'react';
+
+export interface TextFormats {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: 'left' | 'center' | 'right' | 'justify';
+  fontSize?: number;
+  color?: string;
+  backgroundColor?: string;
+}
+
+export const useTextFormatting = (initialFormats: TextFormats = {}) => {
+  const [formats, setFormats] = useState<TextFormats>(initialFormats);
+
+  const updateFormat = useCallback((format: keyof TextFormats, value: any) => {
+    setFormats(prev => ({
+      ...prev,
+      [format]: value
+    }));
+  }, []);
+
+  const resetFormats = useCallback(() => {
+    setFormats({});
+  }, []);
+
+  const getStyleFromFormats = useCallback((formats: TextFormats): React.CSSProperties => {
+    const style: React.CSSProperties = {};
+
+    if (formats.bold) style.fontWeight = 'bold';
+    if (formats.italic) style.fontStyle = 'italic';
+    if (formats.underline) style.textDecoration = 'underline';
+    if (formats.fontSize) style.fontSize = `${formats.fontSize}px`;
+    if (formats.color) style.color = formats.color;
+    if (formats.backgroundColor) style.backgroundColor = formats.backgroundColor;
+    if (formats.align) {
+      switch (formats.align) {
+        case 'left':
+          style.textAlign = 'left';
+          break;
+        case 'center':
+          style.textAlign = 'center';
+          break;
+        case 'right':
+          style.textAlign = 'right';
+          break;
+        case 'justify':
+          style.textAlign = 'justify';
+          break;
+      }
+    }
+
+    return style;
+  }, []);
+
+  const applyFormatsToElement = useCallback((element: HTMLElement, formats: TextFormats) => {
+    const style = getStyleFromFormats(formats);
+    
+    Object.entries(style).forEach(([key, value]) => {
+      (element.style as any)[key] = value;
+    });
+  }, [getStyleFromFormats]);
+
+  return {
+    formats,
+    updateFormat,
+    resetFormats,
+    getStyleFromFormats,
+    applyFormatsToElement
+  };
+};
+
