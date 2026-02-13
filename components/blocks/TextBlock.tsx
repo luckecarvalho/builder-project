@@ -34,6 +34,19 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
   const [isRichEditMode, setIsRichEditMode] = useState(false);
   const [showFormattingToolbar, setShowFormattingToolbar] = useState(false);
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+
+  // Ajustar altura do textarea automaticamente quando o conteúdo mudar ou componente montar
+  React.useEffect(() => {
+    if (textareaRef.current && isEditing) {
+      // Pequeno delay para garantir que o DOM está atualizado
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+        }
+      }, 0);
+    }
+  }, [html, isEditing]);
   
   // Inicializar formatos a partir do estilo persistido
   const [formats, setFormats] = useState<TextFormats>(() => {
@@ -352,22 +365,8 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
         {/* Controles de edição */}
         {isSelected && (
           <div className="absolute -top-12 left-0 flex items-center space-x-2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10">
-            {/* Botão para alternar modo */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsRichEditMode(!isRichEditMode);
-              }}
-              className={`px-2 py-1 text-xs border rounded ${
-                isRichEditMode ? 'bg-indigo-100 border-indigo-300' : 'bg-gray-100 border-gray-300'
-              }`}
-              title={isRichEditMode ? 'Modo texto simples' : 'Modo HTML'}
-            >
-              {isRichEditMode ? 'Texto' : 'HTML'}
-            </button>
-
-            {/* Controles de formatação (apenas no modo HTML) */}
-            {isRichEditMode && allowHtml && (
+            {/* Controles de formatação */}
+            {allowHtml && (
               <>
                 <div className="h-4 w-px bg-gray-300" />
                 <button
@@ -414,67 +413,39 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
           </div>
         )}
 
-        {/* Área de edição */}
+        {/* Área de edição - sempre exibe texto sem tags HTML */}
         <div className="relative">
-          {isRichEditMode ? (
-            <textarea
-              id={`text-edit-${block.props.id}`}
-              ref={textareaRef}
-              value={html}
-              onChange={handleHtmlChange}
-              onFocus={() => {
-                if (globalFormattingToolbar) {
-                  globalFormattingToolbar.show({
-                    isVisible: true,
-                    onFormatChange: handleFormatChange,
-                    onClose: () => globalFormattingToolbar.hide(),
-                    currentFormats: formats
-                  });
-                }
-              }}
-              onSelect={() => {
-                // atualizar toolbar com estilos da seleção
-                extractFormatsFromSelection();
-              }}
-              onBlur={() => {
-                if (globalFormattingToolbar) {
-                  globalFormattingToolbar.hide();
-                }
-              }}
-              placeholder="Digite seu texto HTML..."
-              className="w-full min-h-[100px] bg-transparent border-none outline-none resize-none"
-              style={{...textStyle, ...getStyleFromFormats(formats)}}
-              maxLength={maxChars}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <textarea
-              id={`text-edit-${block.props.id}`}
-              ref={textareaRef}
-              value={html.replace(/<[^>]*>/g, '')} // Remove HTML tags para modo texto simples
-              onChange={handleTextChange}
-              onFocus={() => {
-                if (globalFormattingToolbar) {
-                  globalFormattingToolbar.show({
-                    isVisible: true,
-                    onFormatChange: handleFormatChange,
-                    onClose: () => globalFormattingToolbar.hide(),
-                    currentFormats: formats
-                  });
-                }
-              }}
-              onBlur={() => {
-                if (globalFormattingToolbar) {
-                  globalFormattingToolbar.hide();
-                }
-              }}
-              placeholder="Digite seu texto..."
-              className="w-full min-h-[100px] bg-transparent border-none outline-none resize-none"
-              style={{...textStyle, ...getStyleFromFormats(formats)}}
-              maxLength={maxChars}
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
+          <textarea
+            id={`text-edit-${block.props.id}`}
+            ref={textareaRef}
+            value={typeof html === 'string' ? html.replace(/<[^>]*>/g, '') : ''}
+            onChange={handleTextChange}
+            onFocus={() => {
+              if (globalFormattingToolbar) {
+                globalFormattingToolbar.show({
+                  isVisible: true,
+                  onFormatChange: handleFormatChange,
+                  onClose: () => globalFormattingToolbar.hide(),
+                  currentFormats: formats
+                });
+              }
+            }}
+            onBlur={() => {
+              if (globalFormattingToolbar) {
+                globalFormattingToolbar.hide();
+              }
+            }}
+            placeholder="Digite seu texto..."
+            className="w-full bg-transparent border-none outline-none resize-none overflow-hidden"
+            style={{...textStyle, ...getStyleFromFormats(formats)}}
+            maxLength={maxChars}
+            onClick={(e) => e.stopPropagation()}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
+              target.style.height = `${target.scrollHeight}px`;
+            }}
+          />
         </div>
       </div>
     );

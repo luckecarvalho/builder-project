@@ -176,7 +176,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           Conteúdo do Texto
         </label>
         <textarea
-          value={content.html || ''}
+          value={typeof content.html === 'string' ? content.html.replace(/<[^>]*>/g, '') : (content.html || '')}
           onChange={(e) => updateContent('html', e.target.value)}
           placeholder="Digite seu texto..."
           rows={6}
@@ -185,7 +185,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         />
         {content.maxChars && (
           <p className="text-xs text-gray-500 mt-1">
-            {(content.html || '').length}/{content.maxChars} caracteres
+            {(typeof content.html === 'string' ? content.html.replace(/<[^>]*>/g, '') : content.html || '').length}/{content.maxChars} caracteres
           </p>
         )}
       </div>
@@ -1587,13 +1587,28 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       if (count < 1) return;
       
       if (count > currentCount) {
-        // Adicionar cards
+        // Adicionar cards - herdar imagem e selo se estiverem habilitados em algum card existente
         const newItems = [...items];
+        const hasImageEnabled = items.some((item: any) => item.image);
+        const hasBadgeEnabled = items.some((item: any) => item.badge);
+        
         for (let i = currentCount; i < count; i++) {
-          newItems.push({
+          const newCard: any = {
             title: `Slide ${i + 1}`,
             text: 'Clique para editar o conteúdo',
-          });
+          };
+          
+          // Herdar imagem se estiver habilitada globalmente
+          if (hasImageEnabled) {
+            newCard.image = { src: '', alt: '' };
+          }
+          
+          // Herdar selo se estiver habilitado globalmente
+          if (hasBadgeEnabled) {
+            newCard.badge = { src: '', alt: '' };
+          }
+          
+          newItems.push(newCard);
         }
         updateContent('items', newItems);
       } else if (count < currentCount) {

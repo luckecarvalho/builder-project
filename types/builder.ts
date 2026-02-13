@@ -127,6 +127,10 @@ export interface Column {
   id: string;
   grid: GridConfig;
   blocks: Block[];
+  /** Alinhamento horizontal dos blocos na coluna */
+  alignment?: 'left' | 'center' | 'right' | 'justify';
+  /** Alinhamento vertical dos blocos na coluna */
+  alignmentVertical?: 'top' | 'center' | 'bottom';
 }
 
 export interface Row {
@@ -331,6 +335,8 @@ export interface ContainerBlockProps extends BlockProps {
       color: string;
     };
     background?: BackgroundConfig;
+    alignment?: 'left' | 'center' | 'right' | 'justify';
+    alignmentVertical?: 'top' | 'center' | 'bottom';
   };
 }
 

@@ -9,7 +9,9 @@ import TextFormattingToolbar from './TextFormattingToolbar';
 import { 
   Plus, Settings, Eye, Edit3, Save, Undo, Redo, Trash2, 
   Grid3X3, GripVertical, ChevronDown, ChevronUp, Copy, Move,
-  Monitor, Smartphone, Tablet, RotateCcw, X, Check
+  Monitor, Smartphone, Tablet, RotateCcw, X, Check,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical
 } from 'lucide-react';
 
 interface BuilderProps {
@@ -23,6 +25,7 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('texto');
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [showComponentDropdown, setShowComponentDropdown] = useState<{rowId: string, columnId: string} | null>(null);
+  const [showAlignmentDropdown, setShowAlignmentDropdown] = useState<{rowId: string, columnId: string} | null>(null);
   const [responsiveMode, setResponsiveMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   
   // Estado global para a toolbar de formatação
@@ -55,18 +58,39 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
     };
   }, [globalFormattingToolbar]);
 
+  // Listener para fechar dropdown de alinhamento ao clicar fora
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showAlignmentDropdown) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('.alignment-dropdown-container')) {
+          setShowAlignmentDropdown(null);
+        }
+      }
+    };
+
+    if (showAlignmentDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showAlignmentDropdown]);
+
   const categories = getBlockCategories();
   const blocks = getBlocksByCategory(selectedCategory);
   
-  // Lista de blocos para o dropdown (baseada no registry)
-  const allBlocks = getBlockCategories().flatMap(cat =>
-    getBlocksByCategory(cat).map(m => ({
-      type: m.type,
-      name: m.name,
-      description: m.description,
-      icon: m.icon,
-    }))
-  );
+  // Lista de blocos para o dropdown (baseada no registry), ordenada alfabeticamente
+  const allBlocks = getBlockCategories()
+    .flatMap(cat =>
+      getBlocksByCategory(cat).map(m => ({
+        type: m.type,
+        name: m.name,
+        description: m.description,
+        icon: m.icon,
+      }))
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
   const handleDragStart = (e: React.DragEvent, blockType: string) => {
     e.dataTransfer.setData('text/plain', blockType);
@@ -87,6 +111,7 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
 
   const handleDrop = (e: React.DragEvent, rowId: string, columnId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     const blockType = e.dataTransfer.getData('text/plain');
     if (blockType) {
       builder.addBlock(rowId, columnId, blockType);
@@ -352,15 +377,18 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
         </div>
       )}
 
-          {/* Canvas */}
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className={`mx-auto space-y-8 transition-all duration-300 ${
-              responsiveMode === 'desktop' 
-                ? 'max-w-6xl' 
-                : responsiveMode === 'tablet' 
-                ? 'max-w-3xl' 
-                : 'max-w-sm'
-            }`}>
+          {/* Canvas - viewport simulado para tablet/mobile */}
+          <div className="flex-1 overflow-y-auto p-6 flex justify-center bg-gray-100/50">
+            <div
+              className="w-full space-y-8 transition-all duration-300 min-h-0"
+              style={{
+                maxWidth: responsiveMode === 'mobile' ? 375 : responsiveMode === 'tablet' ? 768 : undefined,
+                padding: (responsiveMode === 'mobile' || responsiveMode === 'tablet') ? 16 : undefined,
+                boxShadow: (responsiveMode === 'mobile' || responsiveMode === 'tablet') ? '0 0 0 1px rgba(0,0,0,0.08), 0 4px 6px -1px rgba(0,0,0,0.1)' : undefined,
+                backgroundColor: (responsiveMode === 'mobile' || responsiveMode === 'tablet') ? '#fff' : undefined,
+                borderRadius: (responsiveMode === 'mobile' || responsiveMode === 'tablet') ? 8 : undefined,
+              }}
+            >
               {builder.page.rows.map((row, rowIndex) => (
                 <div
                   key={row.id}
@@ -414,18 +442,19 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                     </div>
                   )}
 
-                  {/* Colunas */}
-                  <div className={`grid gap-4 ${
-                    responsiveMode === 'mobile' ? 'grid-cols-1' : ''
-                  }`} style={{
-                    gridTemplateColumns: responsiveMode === 'mobile' 
-                      ? '1fr' 
-                      : `repeat(${row.columns.length}, 1fr)`
-                  }}>
+                  {/* Colunas: 1 col = 100%, 2 cols = 50% cada, 3 = 33.33%, etc. */}
+                  <div
+                    className="grid gap-4 w-full"
+                    style={{
+                      gridTemplateColumns: (responsiveMode === 'mobile' || responsiveMode === 'tablet')
+                        ? '1fr'
+                        : `repeat(${row.columns.length}, minmax(0, 1fr))`
+                    }}
+                  >
                     {row.columns.map((column, columnIndex) => (
                       <div
                         key={column.id}
-                        className={`relative min-h-[100px] p-4 rounded-lg transition-colors ${
+                        className={`relative min-h-[100px] min-w-0 w-full p-4 rounded-lg transition-colors flex flex-col ${
                           isPreview 
                             ? '' 
                             : `border-2 border-dashed ${
@@ -436,6 +465,9 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                   : 'border-gray-200 hover:border-gray-300'
                               }`
                         }`}
+                        style={{
+                          minHeight: (column.alignmentVertical === 'center' || column.alignmentVertical === 'bottom') ? 220 : undefined
+                        }}
                         onDragOver={(e) => handleDragOver(e, column.id)}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDrop(e, row.id, column.id)}
@@ -445,19 +477,112 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                         {!isPreview && (
                           <div className="absolute -top-2 -right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
-                              onClick={() => builder.addColumn(row.id, column.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                builder.addColumn(row.id, column.id);
+                              }}
                               className="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center hover:bg-indigo-600"
                               title="Adicionar coluna"
                             >
                               <Plus className="w-3 h-3" />
                             </button>
-                            <button
-                              onClick={() => builder.splitColumn(row.id, column.id)}
-                              className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center hover:bg-blue-600"
-                              title="Dividir coluna"
-                            >
-                              <Grid3X3 className="w-3 h-3" />
-                            </button>
+                            <div className="relative alignment-dropdown-container">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowAlignmentDropdown(
+                                    showAlignmentDropdown?.rowId === row.id && showAlignmentDropdown?.columnId === column.id
+                                      ? null
+                                      : { rowId: row.id, columnId: column.id }
+                                  );
+                                }}
+                                className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center hover:bg-blue-600"
+                                title="Alinhamento"
+                              >
+                                {column.alignment === 'center' ? <AlignCenterVertical className="w-3 h-3" /> :
+                                 column.alignment === 'right' ? <AlignEndVertical className="w-3 h-3" /> :
+                                 <AlignStartVertical className="w-3 h-3" />}
+                              </button>
+                              {showAlignmentDropdown?.rowId === row.id && showAlignmentDropdown?.columnId === column.id && (
+                                <div
+                                  className="absolute top-8 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 p-2 flex flex-col gap-2"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  {/* Horizontal: Esquerda | Centro | Direita — ícones verticais (linhas) */}
+                                  <div className="flex rounded-md overflow-hidden border border-gray-200 bg-gray-100 p-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        builder.updateColumn(row.id, column.id, { alignment: 'left' });
+                                      }}
+                                      className={`p-1.5 ${(column.alignment || 'left') === 'left' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                      title="Alinhar à esquerda"
+                                    >
+                                      <AlignStartVertical className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        builder.updateColumn(row.id, column.id, { alignment: 'center' });
+                                      }}
+                                      className={`p-1.5 ${column.alignment === 'center' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                      title="Centralizar horizontalmente"
+                                    >
+                                      <AlignCenterVertical className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        builder.updateColumn(row.id, column.id, { alignment: 'right' });
+                                      }}
+                                      className={`p-1.5 ${column.alignment === 'right' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                      title="Alinhar à direita"
+                                    >
+                                      <AlignEndVertical className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                  {/* Vertical: Topo | Centro | Base — ícones horizontais (linhas) */}
+                                  <div className="flex rounded-md overflow-hidden border border-gray-200 bg-gray-100 p-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        builder.updateColumn(row.id, column.id, { alignmentVertical: 'top' });
+                                      }}
+                                      className={`p-1.5 ${(column.alignmentVertical || 'top') === 'top' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                      title="Alinhar ao topo"
+                                    >
+                                      <AlignStartHorizontal className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        builder.updateColumn(row.id, column.id, { alignmentVertical: 'center' });
+                                      }}
+                                      className={`p-1.5 ${column.alignmentVertical === 'center' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                      title="Centralizar verticalmente"
+                                    >
+                                      <AlignCenterHorizontal className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        builder.updateColumn(row.id, column.id, { alignmentVertical: 'bottom' });
+                                      }}
+                                      className={`p-1.5 ${column.alignmentVertical === 'bottom' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                      title="Alinhar à base"
+                                    >
+                                      <AlignEndHorizontal className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -480,11 +605,24 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                           </div>
                         )}
 
-                        {/* Blocos */}
-                        <div className="space-y-4">
+                        {/* Blocos - 100% da largura da coluna */}
+                        <div 
+                          className="space-y-4 flex-1 w-full min-w-0 flex flex-col"
+                          style={{
+                            textAlign: column.alignment || 'left',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: column.alignment === 'center' ? 'center' : 
+                                        column.alignment === 'right' ? 'flex-end' : 
+                                        column.alignment === 'justify' ? 'stretch' : 'flex-start',
+                            justifyContent: (column.alignmentVertical || 'top') === 'center' ? 'center' : 
+                                             (column.alignmentVertical || 'top') === 'bottom' ? 'flex-end' : 'flex-start',
+                            minHeight: ((column.alignmentVertical || 'top') === 'center' || (column.alignmentVertical || 'top') === 'bottom') ? 180 : undefined
+                          }}
+                        >
                           {column.blocks.length === 0 ? (
                             !isPreview && (
-                              <div className="flex items-center justify-center h-20 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+                              <div className="w-full flex items-center justify-center h-20 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
                                 <div className="text-center">
                                   <Plus className="w-6 h-6 mx-auto mb-1" />
                                   <p className="text-sm">Arraste um bloco aqui</p>
@@ -495,7 +633,11 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                             column.blocks.map((block, blockIndex) => (
                               <div
                                 key={block.props.id}
-                                className="relative group/block"
+                                className={`relative group/block min-w-0 ${
+                                  (column.alignment || 'left') === 'center' || (column.alignment || 'left') === 'right'
+                                    ? 'w-max max-w-full'
+                                    : 'w-full'
+                                }`}
                               >
                                 {/* Controles do Bloco */}
                                 {!isPreview && (
@@ -508,11 +650,10 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                       <Settings className="w-3 h-3" />
                                     </button>
                                     <button
-                                      onClick={() => builder.duplicateBlock(
-                                        row.id,
-                                        column.id,
-                                        block.props.id
-                                      )}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        builder.duplicateBlock(row.id, column.id, block.props.id);
+                                      }}
                                       className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center hover:bg-blue-600"
                                       title="Duplicar bloco"
                                     >
