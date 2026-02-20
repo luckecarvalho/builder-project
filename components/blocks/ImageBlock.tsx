@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { ImageBlockProps } from '@/types/builder';
-import { ValidationUtils } from '@/utils/validation';
 
 interface ImageBlockComponentProps {
   block: { props: ImageBlockProps };
@@ -18,63 +17,9 @@ const ImageBlock: React.FC<ImageBlockComponentProps> = ({
   onSelect,
 }) => {
   const { content, style } = block.props;
-  const { src, alt, width, height, lazyLoad, recommendedSize } = content;
+  const { src, alt, width, height, lazyLoad } = content;
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const handleSrcChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (onUpdate) {
-      onUpdate({
-        content: {
-          ...content,
-          src: e.target.value,
-        },
-      });
-    }
-    setImageError(false);
-  };
-
-  const handleAltChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (onUpdate) {
-      onUpdate({
-        content: {
-          ...content,
-          alt: e.target.value,
-        },
-      });
-    }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validar arquivo
-      const validation = ValidationUtils.validateImageFile(file);
-      if (!validation.isValid) {
-        setUploadError(validation.error || 'Erro ao validar imagem');
-        e.target.value = '';
-        return;
-      }
-
-      // Limpar erro anterior
-      setUploadError(null);
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (onUpdate && event.target?.result) {
-          onUpdate({
-            content: {
-              ...content,
-              src: event.target.result as string,
-            },
-          });
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-    e.target.value = '';
-  };
 
   const handleImageLoad = () => {
     setImageLoaded(true);
@@ -101,55 +46,6 @@ const ImageBlock: React.FC<ImageBlockComponentProps> = ({
         className={`relative group ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
         onClick={onSelect}
       >
-        {/* Controles de edição */}
-        {isSelected && (
-          <div className="absolute -top-12 left-0 flex flex-wrap items-center gap-2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10 max-w-md">
-            {/* Input de URL */}
-            <input
-              type="url"
-              value={src}
-              onChange={handleSrcChange}
-              placeholder="URL da imagem..."
-              className="flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded"
-              onClick={(e) => e.stopPropagation()}
-            />
-
-            {/* Upload de arquivo */}
-            <div className="flex flex-col">
-              <label className="px-2 py-1 text-xs bg-indigo-100 text-indigo-700 border border-indigo-300 rounded cursor-pointer hover:bg-indigo-200">
-                Upload
-                <input
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </label>
-              {uploadError && (
-                <p className="mt-1 text-xs text-red-600 max-w-xs">{uploadError}</p>
-              )}
-            </div>
-
-            {/* Input de alt text */}
-            <input
-              type="text"
-              value={alt}
-              onChange={handleAltChange}
-              placeholder="Texto alternativo..."
-              className="flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded"
-              onClick={(e) => e.stopPropagation()}
-            />
-
-            {/* Dimensões recomendadas */}
-            {recommendedSize && (
-              <span className="text-xs text-gray-500 whitespace-nowrap">
-                {recommendedSize.width}×{recommendedSize.height}px
-              </span>
-            )}
-          </div>
-        )}
-
         {/* Preview da imagem */}
         <div className="relative">
           {src && !imageError ? (

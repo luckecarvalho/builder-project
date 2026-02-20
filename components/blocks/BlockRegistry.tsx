@@ -6,7 +6,6 @@ import HeadingBlock from './HeadingBlock';
 import TextBlock from './TextBlock';
 import ImageBlock from './ImageBlock';
 import VideoBlock from './VideoBlock';
-import ButtonBlock from './ButtonBlock';
 import DividerBlock from './DividerBlock';
 import AudioBlock from './AudioBlock';
 
@@ -17,7 +16,6 @@ import {
   CarouselBlock,
   TabsBlock,
   AccordionBlock,
-  ContainerBlock,
   ModalBlock,
   QuizMultipleChoiceBlock,
   QuizTrueFalseBlock,
@@ -133,28 +131,6 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     },
     renderer: 'AudioBlock',
   },
-  'button': {
-    type: 'button',
-    name: 'Botão',
-    description: 'Botão com link interno ou externo',
-    icon: 'MousePointer',
-    category: 'interacao',
-    validation: [
-      { field: 'content.label', type: 'required', message: 'Rótulo do botão é obrigatório' },
-      { field: 'content.url', type: 'required', message: 'URL do botão é obrigatória' },
-    ],
-    defaultProps: {
-      type: 'button',
-      content: {
-        label: 'Clique aqui',
-        url: '#',
-        type: 'internal',
-        size: 'medium',
-        variant: 'primary',
-      },
-    },
-    renderer: 'ButtonBlock',
-  },
   'table': {
     type: 'table',
     name: 'Tabela',
@@ -191,7 +167,8 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     defaultProps: {
       type: 'badge',
       content: {
-        size: 100,
+        src: '',
+        alt: '',
       },
     },
     renderer: 'BadgeBlock',
@@ -296,22 +273,6 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     },
     renderer: 'DividerBlock',
   },
-  'container': {
-    type: 'container',
-    name: 'Container',
-    description: 'Container para agrupar outros blocos',
-    icon: 'Box',
-    category: 'layout',
-    validation: [],
-    defaultProps: {
-      type: 'container',
-      content: {
-        blocks: [],
-        padding: { x: 16, y: 16 },
-      },
-    },
-    renderer: 'ContainerBlock',
-  },
   'modal': {
     type: 'modal',
     name: 'Modal',
@@ -326,13 +287,12 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
       type: 'modal',
       content: {
         trigger: {
-          type: 'button',
+          type: 'text',
           content: {
-            label: 'Abrir Modal',
-            url: '#',
-            type: 'internal',
-            size: 'medium',
-            variant: 'primary',
+            html: '<p>Abrir Modal</p>',
+            maxChars: 1000,
+            allowHtml: true,
+            allowLinks: true,
           },
         },
         modalData: {
@@ -459,14 +419,12 @@ export const BLOCK_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'ImageBlock': ImageBlock,
   'VideoBlock': VideoBlock,
   'AudioBlock': AudioBlock,
-  'ButtonBlock': ButtonBlock,
   'TableBlock': TableBlock,
   'BadgeBlock': BadgeBlock,
   'CarouselBlock': CarouselBlock,
   'TabsBlock': TabsBlock,
   'AccordionBlock': AccordionBlock,
   'DividerBlock': DividerBlock,
-  'ContainerBlock': ContainerBlock,
   'ModalBlock': ModalBlock,
   'QuizMultipleChoiceBlock': QuizMultipleChoiceBlock,
   'QuizTrueFalseBlock': QuizTrueFalseBlock,

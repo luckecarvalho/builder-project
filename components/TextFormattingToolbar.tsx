@@ -41,6 +41,7 @@ const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
 
   const [isFontColorOpen, setIsFontColorOpen] = React.useState(false);
   const [isBgColorOpen, setIsBgColorOpen] = React.useState(false);
+  const [isFontSizeOpen, setIsFontSizeOpen] = React.useState(false);
 
   const handleFontSizeChange = (size: number) => {
     onFormatChange('fontSize', size);
@@ -153,18 +154,42 @@ const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         {/* Separador */}
         <div className="h-6 w-px bg-gray-300"></div>
 
-        {/* Grupo: Tamanho da Fonte */}
-        <div className="flex items-center space-x-2">
+        {/* Grupo: Tamanho da Fonte (dropdown customizado para não roubar foco do editor) */}
+        <div className="relative flex items-center space-x-2">
           <span className="text-xs text-gray-500 font-medium">Tamanho:</span>
-          <select
-            value={currentFormats.fontSize || 16}
-            onChange={(e) => handleFontSizeChange(parseInt(e.target.value))}
-            className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          <button
+            type="button"
+            onClick={() => setIsFontSizeOpen(!isFontSizeOpen)}
+            className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 min-w-[4rem]"
+            title="Tamanho da fonte"
           >
-            {fontSizes.map(size => (
-              <option key={size} value={size}>{size}px</option>
-            ))}
-          </select>
+            <span className="text-gray-700">{currentFormats.fontSize || 16}px</span>
+            <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {isFontSizeOpen && (
+            <div
+              className="absolute z-20 mt-2 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[5rem]"
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {fontSizes.map(size => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => {
+                    handleFontSizeChange(size);
+                    setIsFontSizeOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${
+                    (currentFormats.fontSize || 16) === size ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                  }`}
+                >
+                  {size}px
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Separador */}

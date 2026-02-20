@@ -107,6 +107,9 @@ export interface BlockProps {
   layout?: {
     maxWidth?: number;
     alignment?: 'left' | 'center' | 'right';
+    alignmentVertical?: 'top' | 'center' | 'bottom';
+    minHeight?: number; // Altura mínima do bloco em pixels
+    height?: number; // Altura fixa do bloco em pixels (opcional)
     zIndex?: number;
     wrap?: boolean;
     visibility?: BreakpointConfig;
@@ -127,6 +130,10 @@ export interface Column {
   id: string;
   grid: GridConfig;
   blocks: Block[];
+  /** Alinhamento horizontal dos blocos na coluna */
+  alignment?: 'left' | 'center' | 'right' | 'justify';
+  /** Alinhamento vertical dos blocos na coluna */
+  alignmentVertical?: 'top' | 'center' | 'bottom';
 }
 
 export interface Row {
@@ -331,6 +338,8 @@ export interface ContainerBlockProps extends BlockProps {
       color: string;
     };
     background?: BackgroundConfig;
+    alignment?: 'left' | 'center' | 'right' | 'justify';
+    alignmentVertical?: 'top' | 'center' | 'bottom';
   };
 }
 

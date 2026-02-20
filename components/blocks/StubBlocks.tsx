@@ -2,7 +2,8 @@ import React from 'react';
 import { BlockProps } from '@/types/builder';
 import { ValidationUtils } from '@/utils/validation';
 import TextFormattingToolbar from '../TextFormattingToolbar';
-import { useTextFormatting, TextFormats } from '@/hooks/useTextFormatting';
+import { useTextFormatting, TextFormats, getStyleFromFormats } from '@/hooks/useTextFormatting';
+import { AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical } from 'lucide-react';
 
 interface StubBlockProps {
   block: { props: BlockProps };
@@ -23,13 +24,16 @@ interface StubBlockProps {
 
 // Componentes stub para blocos não implementados ainda
 
-export const TableBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true }) => {
+const cellStyleKey = (row: number, col: number) => `${row}-${col}`;
+
+export const TableBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true, globalFormattingToolbar }) => {
   const headers: string[] = (block.props as any)?.content?.headers || ['Coluna 1'];
   const rows: string[][] = (block.props as any)?.content?.rows || [['']];
   const format: 'basic' | 'striped' | 'bordered' = (block.props as any)?.content?.format || 'basic';
   const borderRows: boolean = (block.props as any)?.content?.borderRows !== false;
   const borderColumns: boolean = (block.props as any)?.content?.borderColumns !== false;
   const borderOuter: boolean = (block.props as any)?.content?.borderOuter !== false;
+  const cellStyles: Record<string, TextFormats> = (block.props as any)?.content?.cellStyles || {};
   
   const [editingCell, setEditingCell] = React.useState<{row: number, col: number} | null>(null);
   const [editingValue, setEditingValue] = React.useState('');
@@ -43,6 +47,37 @@ export const TableBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
       },
     });
   };
+
+  const cellStylesRef = React.useRef(cellStyles);
+  cellStylesRef.current = cellStyles;
+
+  const showToolbarForCell = React.useCallback((row: number, col: number) => {
+    if (!globalFormattingToolbar || !isEditing) return;
+    const key = cellStyleKey(row, col);
+    const currentFormats = cellStylesRef.current[key] || {};
+    const handleFormatChange = (formatName: string, value: any) => {
+      const latest = cellStylesRef.current;
+      const next = { ...(latest[key] || {}) };
+      if (formatName === 'bold' || formatName === 'italic' || formatName === 'underline') {
+        next[formatName] = value;
+      } else if (formatName === 'align' || formatName === 'fontSize' || formatName === 'color' || formatName === 'backgroundColor') {
+        (next as any)[formatName] = value;
+      }
+      updateContent('cellStyles', { ...latest, [key]: next });
+      globalFormattingToolbar.show({
+        isVisible: true,
+        onFormatChange: handleFormatChange,
+        onClose: () => globalFormattingToolbar.hide(),
+        currentFormats: next,
+      });
+    };
+    globalFormattingToolbar.show({
+      isVisible: true,
+      onFormatChange: handleFormatChange,
+      onClose: () => globalFormattingToolbar.hide(),
+      currentFormats,
+    });
+  }, [globalFormattingToolbar, isEditing, updateContent]);
 
   const updateHeader = (index: number, value: string) => {
     const newHeaders = [...headers];
@@ -164,13 +199,20 @@ export const TableBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
                       type="text"
                       value={editingValue}
                       onChange={(e) => setEditingValue(e.target.value)}
-                      onBlur={finishEditing}
+                      onFocus={() => showToolbarForCell(-1, colIdx)}
+                      onBlur={() => {
+                        if (globalFormattingToolbar) globalFormattingToolbar.hide();
+                        finishEditing();
+                      }}
                       onKeyDown={handleKeyDown}
+                      style={getStyleFromFormats(cellStyles[cellStyleKey(-1, colIdx)] || {})}
                       className="w-full bg-transparent border-none outline-none text-xs font-semibold text-gray-700"
                       autoFocus
                     />
                   ) : (
-                    h || `Coluna ${colIdx + 1}`
+                    <span style={getStyleFromFormats(cellStyles[cellStyleKey(-1, colIdx)] || {})}>
+                      {h || `Coluna ${colIdx + 1}`}
+                    </span>
                   )}
                 </th>
               ))}
@@ -193,13 +235,20 @@ export const TableBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
                         type="text"
                         value={editingValue}
                         onChange={(e) => setEditingValue(e.target.value)}
-                        onBlur={finishEditing}
+                        onFocus={() => showToolbarForCell(rowIdx, colIdx)}
+                        onBlur={() => {
+                          if (globalFormattingToolbar) globalFormattingToolbar.hide();
+                          finishEditing();
+                        }}
                         onKeyDown={handleKeyDown}
+                        style={getStyleFromFormats(cellStyles[cellStyleKey(rowIdx, colIdx)] || {})}
                         className="w-full bg-transparent border-none outline-none text-sm text-gray-700"
                         autoFocus
                       />
                     ) : (
-                      row[colIdx] || ''
+                      <span style={getStyleFromFormats(cellStyles[cellStyleKey(rowIdx, colIdx)] || {})}>
+                        {row[colIdx] || ''}
+                      </span>
                     )}
                   </td>
                 ))}
@@ -218,28 +267,63 @@ export const TableBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
   );
 };
 
-export const BadgeBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, isEditing = true }) => (
-  <div
-    className={`p-4 rounded-lg text-center ${
-      isEditing 
-        ? `border-2 border-dashed border-gray-300 ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`
-        : ''
-    }`}
-    onClick={isEditing ? onSelect : undefined}
-  >
-    <div className="text-gray-500">
-      <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-      </svg>
-      <p className="text-sm font-medium">Selo/Badge</p>
-      <p className="text-xs text-gray-400">Em desenvolvimento</p>
+export const BadgeBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, isEditing = true }) => {
+  const content = (block.props as any)?.content || {};
+  const src = content.src || '';
+  const alt = content.alt || '';
+  const badgeSize: React.CSSProperties = { width: 70, height: 70, borderRadius: '100%' };
+
+  return (
+    <div
+      className={`inline-block ${isEditing ? 'p-1' : ''} ${
+        isEditing
+          ? `border-2 border-dashed border-gray-300 rounded-full ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`
+          : ''
+      }`}
+      onClick={isEditing ? onSelect : undefined}
+    >
+      {src ? (
+        <div
+          className={`overflow-hidden border-2 border-white shadow-md mb-2 ${
+            isEditing ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400' : ''
+          }`}
+          style={badgeSize}
+          onClick={isEditing ? (e) => e.stopPropagation() : undefined}
+        >
+          <img
+            src={src}
+            alt={alt || 'Selo'}
+            className="w-full h-full object-cover"
+            style={{ borderRadius: '100%' }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        </div>
+      ) : (
+        <div
+          className={`border-2 border-dashed border-gray-400 bg-gray-100 flex flex-col items-center justify-center ${
+            isEditing ? 'cursor-pointer hover:border-indigo-400 hover:bg-indigo-50' : ''
+          }`}
+          style={badgeSize}
+          onClick={isEditing ? (e) => e.stopPropagation() : undefined}
+        >
+          {isEditing ? (
+            <>
+              <svg className="w-5 h-5 text-gray-500 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              <span className="text-xs text-gray-500 font-medium">70x70</span>
+            </>
+          ) : null}
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true, globalFormattingToolbar }) => {
   const items = block.props?.content?.items || [];
-  const [expandedCard, setExpandedCard] = React.useState<number | null>(null);
   const [currentSlide, setCurrentSlide] = React.useState(0);
   const [editingField, setEditingField] = React.useState<{cardIndex: number, field: string} | null>(null);
   const [showFormattingToolbar, setShowFormattingToolbar] = React.useState<{cardIndex: number, field: string} | null>(null);
@@ -254,6 +338,12 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
   const showDots = block.props?.content?.showDots !== false;
   const cardsPerView = 3; // Quantos cards mostrar por vez
   const totalSlides = Math.ceil(items.length / cardsPerView);
+
+  // Ao reduzir a quantidade de slides, voltar para o último step válido para não deixar todos os cards sumindo
+  React.useEffect(() => {
+    const maxSlide = Math.max(0, totalSlides - 1);
+    setCurrentSlide((prev) => (prev > maxSlide ? maxSlide : prev));
+  }, [totalSlides]);
 
   if (items.length === 0) {
     return (
@@ -534,7 +624,7 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
                 key={actualIndex}
                 className={`relative bg-white rounded-lg transition-all shadow-sm hover:shadow-md ${
                   isEditing 
-                    ? `border-2 border-dashed hover:border-indigo-300 ${expandedCard === actualIndex ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300'}`
+                    ? 'border-2 border-dashed hover:border-indigo-300 border-gray-300'
                     : 'border-0'
                 }`}
                 style={{ overflow: 'visible' }}
@@ -628,52 +718,6 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
                       )}
                     </div>
                   )}
-                  
-                  {/* Selo sem imagem do card - Exibido no canto inferior direito do texto */}
-                  {item.badge && !item.image && (
-                    <div className="absolute bottom-0 right-0 z-10">
-                      {item.badge.src ? (
-                        <div 
-                          className={`overflow-hidden border-2 border-white shadow-lg ${
-                            isEditing ? 'cursor-pointer hover:ring-2 hover:ring-indigo-400' : ''
-                          }`}
-                          style={{ width: '70px', height: '70px', borderRadius: '100%' }}
-                          onClick={isEditing ? (e) => {
-                            e.stopPropagation();
-                            setEditingField({cardIndex: actualIndex, field: 'badge'});
-                          } : undefined}
-                          title={isEditing ? "Clique para configurar selo" : undefined}
-                        >
-                          <img
-                            src={item.badge.src}
-                            alt={item.badge.alt || 'Selo'}
-                            className="w-full h-full object-cover"
-                            style={{ borderRadius: '100%' }}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <div 
-                          className={`border-2 border-dashed border-gray-400 bg-gray-100 flex flex-col items-center justify-center ${
-                            isEditing ? 'cursor-pointer hover:border-indigo-400 hover:bg-indigo-50' : ''
-                          }`}
-                          style={{ width: '70px', height: '70px', borderRadius: '100%' }}
-                          onClick={isEditing ? (e) => {
-                            e.stopPropagation();
-                            setEditingField({cardIndex: actualIndex, field: 'badge'});
-                          } : undefined}
-                          title={isEditing ? "Clique para adicionar selo" : undefined}
-                        >
-                          <svg className="w-5 h-5 text-gray-500 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          <span className="text-xs text-gray-500 font-medium">70x70</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   {/* Título */}
                   <div className="mb-2 relative">
@@ -723,7 +767,13 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
                       <div className="relative">
                         <textarea
                           value={item.text || ''}
-                          onChange={(e) => updateItem(actualIndex, 'text', e.target.value)}
+                          onChange={(e) => {
+                            updateItem(actualIndex, 'text', e.target.value);
+                            // Ajustar altura automaticamente
+                            const target = e.target as HTMLTextAreaElement;
+                            target.style.height = 'auto';
+                            target.style.height = `${target.scrollHeight}px`;
+                          }}
                           onBlur={() => {
                             setEditingField(null);
                             hideGlobalToolbar();
@@ -734,10 +784,17 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
                               hideGlobalToolbar();
                             }
                           }}
-                          onFocus={() => showGlobalToolbar(actualIndex, 'text')}
+                          onFocus={(e) => {
+                            showGlobalToolbar(actualIndex, 'text');
+                            // Ajustar altura ao focar
+                            const target = e.target as HTMLTextAreaElement;
+                            setTimeout(() => {
+                              target.style.height = 'auto';
+                              target.style.height = `${target.scrollHeight}px`;
+                            }, 0);
+                          }}
                           placeholder="Digite seu texto aqui..."
-                          className="w-full text-xs bg-transparent border-none outline-none resize-none"
-                          rows={4}
+                          className="w-full text-xs bg-transparent border-none outline-none resize-none overflow-hidden"
                           style={getStyleFromFormats(getFormatsForField(actualIndex, 'text'))}
                           autoFocus
                         />
@@ -804,24 +861,6 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
                       </div>
                     )}
                   </div>
-
-                  {/* Botão de Configurações - Só aparece em modo de edição */}
-                  {isEditing && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setExpandedCard(expandedCard === actualIndex ? null : actualIndex);
-                      }}
-                      className={`absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center text-xs transition-colors ${
-                        expandedCard === actualIndex 
-                          ? 'bg-indigo-600 text-white' 
-                          : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                      }`}
-                      title="Configurações (imagem e selo)"
-                    >
-                      ⚙️
-                    </button>
-                  )}
                 </div>
 
                 {/* Painel de Edição de Imagem - Só aparece em modo de edição */}
@@ -1405,24 +1444,191 @@ export const AccordionBlock: React.FC<StubBlockProps> = ({ block, isSelected, on
   );
 };
 
-export const ContainerBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, isEditing = true }) => (
-  <div
-    className={`p-4 rounded-lg text-center ${
-      isEditing 
-        ? `border-2 border-dashed border-gray-300 ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`
-        : ''
-    }`}
-    onClick={isEditing ? onSelect : undefined}
-  >
-    <div className="text-gray-500">
-      <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-      </svg>
-      <p className="text-sm font-medium">Container</p>
-      <p className="text-xs text-gray-400">Em desenvolvimento</p>
+export const ContainerBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true }) => {
+  const content = (block.props as any)?.content || {};
+  const blocks = content.blocks || [];
+  const alignment = content.alignment || 'left';
+  const alignmentVertical = content.alignmentVertical || 'top';
+  const [showAlignmentDropdown, setShowAlignmentDropdown] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showAlignmentDropdown) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('.container-alignment-dropdown')) {
+          setShowAlignmentDropdown(false);
+        }
+      }
+    };
+
+    if (showAlignmentDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showAlignmentDropdown]);
+
+  const updateAlignment = (newAlignment: 'left' | 'center' | 'right' | 'justify') => {
+    if (onUpdate) {
+      onUpdate({
+        content: {
+          ...content,
+          alignment: newAlignment,
+        },
+      });
+    }
+    setShowAlignmentDropdown(false);
+  };
+
+  const updateAlignmentVertical = (newVal: 'top' | 'center' | 'bottom') => {
+    if (onUpdate) {
+      onUpdate({
+        content: {
+          ...content,
+          alignmentVertical: newVal,
+        },
+      });
+    }
+    setShowAlignmentDropdown(false);
+  };
+
+  return (
+    <div
+      className={`p-4 rounded-lg relative flex flex-col min-h-[120px] ${
+        isEditing 
+          ? `border-2 border-dashed border-gray-300 ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`
+          : ''
+      }`}
+      onClick={isEditing ? onSelect : undefined}
+      style={{
+        textAlign: alignment,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: alignment === 'center' ? 'center' : 
+                    alignment === 'right' ? 'flex-end' : 
+                    alignment === 'justify' ? 'stretch' : 'flex-start',
+        justifyContent: alignmentVertical === 'center' ? 'center' : 
+                       alignmentVertical === 'bottom' ? 'flex-end' : 'flex-start',
+        minHeight: (alignmentVertical === 'center' || alignmentVertical === 'bottom') ? 200 : undefined
+      }}
+    >
+      {/* Botão de Alinhamento - Só aparece quando há componentes */}
+      {isEditing && blocks.length > 0 && (
+        <div className="absolute -top-2 -right-2 container-alignment-dropdown">
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAlignmentDropdown(!showAlignmentDropdown);
+              }}
+              className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center hover:bg-blue-600"
+              title="Alinhamento"
+            >
+              {alignment === 'center' ? <AlignCenterVertical className="w-3 h-3" /> :
+               alignment === 'right' ? <AlignEndVertical className="w-3 h-3" /> :
+               <AlignStartVertical className="w-3 h-3" />}
+            </button>
+            {showAlignmentDropdown && (
+              <div
+                className="absolute top-8 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-60 p-2 flex flex-col gap-2"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {/* Horizontal: Esquerda | Centro | Direita — ícones verticais (linhas) */}
+                <div className="flex rounded-md overflow-hidden border border-gray-200 bg-gray-100 p-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlignment('left');
+                    }}
+                    className={`p-1.5 ${alignment === 'left' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    title="Alinhar à esquerda"
+                  >
+                    <AlignStartVertical className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlignment('center');
+                    }}
+                    className={`p-1.5 ${alignment === 'center' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    title="Centralizar horizontalmente"
+                  >
+                    <AlignCenterVertical className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlignment('right');
+                    }}
+                    className={`p-1.5 ${alignment === 'right' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    title="Alinhar à direita"
+                  >
+                    <AlignEndVertical className="w-4 h-4" />
+                  </button>
+                </div>
+                {/* Vertical: Topo | Centro | Base — ícones horizontais (linhas) */}
+                <div className="flex rounded-md overflow-hidden border border-gray-200 bg-gray-100 p-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlignmentVertical('top');
+                    }}
+                    className={`p-1.5 ${alignmentVertical === 'top' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    title="Alinhar ao topo"
+                  >
+                    <AlignStartHorizontal className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlignmentVertical('center');
+                    }}
+                    className={`p-1.5 ${alignmentVertical === 'center' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    title="Centralizar verticalmente"
+                  >
+                    <AlignCenterHorizontal className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlignmentVertical('bottom');
+                    }}
+                    className={`p-1.5 ${alignmentVertical === 'bottom' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    title="Alinhar à base"
+                  >
+                    <AlignEndHorizontal className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {blocks.length === 0 ? (
+        <div className="text-gray-500">
+          <svg className="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          <p className="text-sm font-medium">Container</p>
+          <p className="text-xs text-gray-400">Adicione componentes para começar</p>
+        </div>
+      ) : (
+        <div className="text-gray-500">
+          <p className="text-sm font-medium">Container</p>
+          <p className="text-xs text-gray-400">{blocks.length} {blocks.length === 1 ? 'componente' : 'componentes'}</p>
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 export const ModalBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true }) => {
   const trigger = (block.props as any)?.content?.trigger || {
@@ -1435,7 +1641,10 @@ export const ModalBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
       variant: 'primary',
     },
   };
-  
+
+  // Alinhamento do botão: layout.alignment ou content.alignment (edição e preview)
+  const alignment = (block.props as any)?.layout?.alignment ?? (block.props as any)?.content?.alignment ?? 'left';
+
   const modalData = (block.props as any)?.content?.modalData || {
     title: 'Título do Modal',
     text: 'Conteúdo do modal...',
@@ -1493,8 +1702,14 @@ export const ModalBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
         }`}
         onClick={isEditing ? onSelect : undefined}
       >
-        {/* Botão Trigger */}
-        <div className="p-4">
+        {/* Botão Trigger - container alinhado (edição e preview) */}
+        <div
+          className="w-full"
+          style={{
+            display: 'flex',
+            justifyContent: alignment === 'center' ? 'center' : alignment === 'right' ? 'flex-end' : 'flex-start',
+          }}
+        >
           {editingTrigger ? (
             <input
               type="text"
@@ -1534,7 +1749,7 @@ export const ModalBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
         </div>
 
         {isEditing && (
-          <div className="px-4 pb-4">
+          <div className="pt-2">
             <p className="text-xs text-gray-500 text-center">
               Clique no botão para editar • Clique fora para selecionar o componente
             </p>
