@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { TextBlockProps } from '@/types/builder';
 import TextFormattingToolbar from '../TextFormattingToolbar';
-import { useTextFormatting, TextFormats } from '@/hooks/useTextFormatting';
+import { useTextFormatting, TextFormats, UnorderedListMarkerStyle, OrderedListStyle } from '@/hooks/useTextFormatting';
 import { ValidationUtils } from '@/utils/validation';
 
 interface TextBlockComponentProps {
@@ -252,7 +252,7 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
 
       const hasUnordered = newLines.some(l => /^\s*[-*•◦▪]\s+/.test(l));
       const hasOrdered = newLines.some(l => hadOrderedRegex.test(l.replace(/^\s*/, '')));
-      const detectOrderedStyleFromLines = (): 'decimal' | 'alpha' | undefined => {
+      const detectOrderedStyleFromLines = (): OrderedListStyle | undefined => {
         const first = newLines.find(l => hadOrderedRegex.test(l.replace(/^\s*/, '')));
         if (!first) return undefined;
         const t = first.replace(/^\s*/, '');
@@ -260,15 +260,15 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
         if (/^[a-z]+[.)]\s+/.test(t)) return 'alpha';
         return 'decimal';
       };
-      const nextFormats = {
+      const nextFormats: TextFormats = {
         ...formats,
-        listMarkerStyle: format === 'unorderedList' && hasUnordered ? markerStyle : undefined,
+        listMarkerStyle: (format === 'unorderedList' && hasUnordered ? markerStyle : undefined) as UnorderedListMarkerStyle | undefined,
         orderedListActive: hasOrdered,
         orderedListStyle: hasOrdered ? (format === 'orderedList' ? orderedStyle : detectOrderedStyleFromLines()) : undefined,
       };
       if (format === 'unorderedList' && !hasUnordered) nextFormats.listMarkerStyle = undefined;
       if (format === 'orderedList' && !hasOrdered) nextFormats.orderedListActive = false;
-      setFormats(prev => ({ ...prev, ...nextFormats }));
+      setFormats(nextFormats);
       globalFormattingToolbar?.show({
         isVisible: true,
         onFormatChange: handleFormatChange,
