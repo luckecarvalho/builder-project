@@ -16,6 +16,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
   const { type, content, style, layout, accessibility } = block;
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [modalImageUploadError, setModalImageUploadError] = useState<string | null>(null);
+  const [badgeUploadError, setBadgeUploadError] = useState<string | null>(null);
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
 
   const getBlockIcon = () => {
     switch (type) {
@@ -113,7 +116,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Texto do Título
+          Texto do Título*
         </label>
         <input
           type="text"
@@ -138,9 +141,21 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           {['left', 'center', 'right'].map((align) => (
             <button
               key={align}
-              onClick={() => updateContent('alignment', align)}
+              onClick={() => {
+                // Atualizar tanto content.alignment quanto layout.alignment para refletir visualmente
+                onUpdate({
+                  content: {
+                    ...content,
+                    alignment: align,
+                  },
+                  layout: {
+                    ...layout,
+                    alignment: align as 'left' | 'center' | 'right',
+                  },
+                });
+              }}
               className={`flex-1 py-2 px-3 text-sm rounded-md border ${
-                (content.alignment || 'left') === align
+                (content.alignment || layout?.alignment || 'left') === align
                   ? 'bg-indigo-100 border-indigo-500 text-indigo-700'
                   : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
@@ -173,10 +188,10 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
     <div className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Conteúdo do Texto
+          Conteúdo do Texto*
         </label>
         <textarea
-          value={content.html || ''}
+          value={typeof content.html === 'string' ? content.html.replace(/<[^>]*>/g, '') : (content.html || '')}
           onChange={(e) => updateContent('html', e.target.value)}
           placeholder="Digite seu texto..."
           rows={6}
@@ -185,7 +200,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         />
         {content.maxChars && (
           <p className="text-xs text-gray-500 mt-1">
-            {(content.html || '').length}/{content.maxChars} caracteres
+            {(typeof content.html === 'string' ? content.html.replace(/<[^>]*>/g, '') : content.html || '').length}/{content.maxChars} caracteres
           </p>
         )}
       </div>
@@ -250,11 +265,80 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
     event.target.value = '';
   };
 
+  const handleBadgeUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const validation = ValidationUtils.validateBadgeImageFile(file);
+      if (!validation.isValid) {
+        setBadgeUploadError(validation.error || 'Erro ao validar imagem');
+        event.target.value = '';
+        return;
+      }
+      setBadgeUploadError(null);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        updateContent('src', e.target?.result ?? '');
+      };
+      reader.readAsDataURL(file);
+    }
+    event.target.value = '';
+  };
+
+  const renderBadgeProperties = () => (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Upload da imagem do selo
+        </label>
+        <input
+          type="file"
+          accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+          onChange={handleBadgeUpload}
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${
+            badgeUploadError
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
+        />
+        {badgeUploadError && (
+          <p className="mt-1 text-xs text-red-600">{badgeUploadError}</p>
+        )}
+        <p className="mt-1 text-xs text-gray-500">
+          Selo exibido em 70×70px, formato circular. Formatos: .jpg, .jpeg, .png, .gif, .webp
+        </p>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Texto alternativo
+        </label>
+        <input
+          type="text"
+          value={content.alt || ''}
+          onChange={(e) => updateContent('alt', e.target.value)}
+          placeholder="Descrição do selo para acessibilidade..."
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+      </div>
+      {content.src && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Preview</label>
+          <div className="w-[70px] h-[70px] rounded-full overflow-hidden border-2 border-white shadow-lg">
+            <img
+              src={content.src}
+              alt={content.alt || 'Preview do selo'}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const renderImageProperties = () => (
     <div className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Upload de Imagem
+          Upload de Imagem*
         </label>
         <input
           type="file"
@@ -276,14 +360,14 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Texto Alternativo (obrigatório)
+          Texto Alternativo*
         </label>
-        <input
-          type="text"
+        <textarea
           value={content.alt || ''}
           onChange={(e) => updateContent('alt', e.target.value)}
           placeholder="Descrição da imagem para acessibilidade..."
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          rows={3}
           required
         />
         <p className="text-xs text-gray-500 mt-1">
@@ -324,7 +408,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
     <div className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Texto do Botão
+          Texto do Botão*
         </label>
         <input
           type="text"
@@ -337,7 +421,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          URL do Link
+          URL do Link*
         </label>
         <input
           type="url"
@@ -399,7 +483,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
     <div className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          URL do Vídeo
+          URL do Vídeo*
         </label>
         <input
           type="url"
@@ -427,7 +511,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Título do Vídeo
+          Título do Vídeo*
         </label>
         <input
           type="text"
@@ -440,7 +524,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Descrição (obrigatória)
+          Descrição*
         </label>
         <textarea
           value={content.description || ''}
@@ -764,70 +848,68 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
     </div>
   );
 
-  const renderAudioProperties = () => {
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [isLoading, setIsLoading] = useState(false);
-
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        // Validar tipo de arquivo
-        if (!file.type.startsWith('audio/')) {
-          alert('Por favor, selecione um arquivo de áudio válido.');
-          return;
-        }
-
-        // Validar tamanho (máximo 50MB)
-        if (file.size > 50 * 1024 * 1024) {
-          alert('Arquivo muito grande. Tamanho máximo: 50MB');
-          return;
-        }
-
-        setIsLoading(true);
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          if (event.target?.result) {
-            const audioSrc = event.target.result as string;
-            const audioTitle = file.name.replace(/\.[^/.]+$/, "");
-            
-            // Atualizar ambos os campos em uma única operação
-            onUpdate({
-              content: {
-                ...content,
-                src: audioSrc,
-                title: audioTitle,
-              },
-            });
-          }
-          setIsLoading(false);
-        };
-        reader.onerror = () => {
-          alert('Erro ao carregar o arquivo de áudio.');
-          setIsLoading(false);
-        };
-        reader.readAsDataURL(file);
+  const handleAudioFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validar tipo de arquivo
+      if (!file.type.startsWith('audio/')) {
+        alert('Por favor, selecione um arquivo de áudio válido.');
+        return;
       }
-    };
+
+      // Validar tamanho (máximo 50MB)
+      if (file.size > 50 * 1024 * 1024) {
+        alert('Arquivo muito grande. Tamanho máximo: 50MB');
+        return;
+      }
+
+      setIsAudioLoading(true);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const audioSrc = event.target.result as string;
+          const audioTitle = file.name.replace(/\.[^/.]+$/, "");
+          
+          // Atualizar ambos os campos em uma única operação
+          onUpdate({
+            content: {
+              ...content,
+              src: audioSrc,
+              title: audioTitle,
+            },
+          });
+        }
+        setIsAudioLoading(false);
+      };
+      reader.onerror = () => {
+        alert('Erro ao carregar o arquivo de áudio.');
+        setIsAudioLoading(false);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const renderAudioProperties = () => {
 
     return (
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Upload de Áudio
+            Upload de Áudio*
           </label>
           <input
-            ref={fileInputRef}
+            ref={audioFileInputRef}
             type="file"
             accept="audio/*"
-            onChange={handleFileUpload}
+            onChange={handleAudioFileUpload}
             className="hidden"
           />
           <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading}
+            onClick={() => audioFileInputRef.current?.click()}
+            disabled={isAudioLoading}
             className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? (
+            {isAudioLoading ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                 <span>Carregando...</span>
@@ -846,25 +928,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           </p>
         </div>
 
-        <div className="border-t border-gray-200 pt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            URL do Áudio (alternativa)
-          </label>
-          <input
-            type="url"
-            value={content.src || ''}
-            onChange={(e) => updateContent('src', e.target.value)}
-            placeholder="https://exemplo.com/audio.mp3"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Ou insira uma URL direta para o arquivo de áudio
-          </p>
-        </div>
-
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Título do Áudio
+            Título do Áudio*
           </label>
           <input
             type="text"
@@ -909,7 +975,6 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           <ul className="text-xs text-blue-700 space-y-1">
             <li>• Sempre forneça um título descritivo</li>
             <li>• Inclua transcript para conteúdo importante</li>
-            <li>• Teste em diferentes navegadores</li>
           </ul>
         </div>
       </div>
@@ -1054,7 +1119,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             {/* Título da Aba */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Título da Aba
+                Título da Aba*
               </label>
               <input
                 type="text"
@@ -1068,7 +1133,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             {/* Conteúdo da Aba */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Conteúdo da Aba
+                Conteúdo da Aba*
               </label>
               <textarea
                 value={currentTab.content || ''}
@@ -1169,7 +1234,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           {/* Texto do Botão */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Texto do Botão
+              Texto do Botão*
             </label>
             <input
               type="text"
@@ -1220,7 +1285,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           {/* Título do Modal */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Título do Modal
+              Título do Modal*
             </label>
             <input
               type="text"
@@ -1538,7 +1603,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             {/* Título do Item */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Título do Item
+                Título do Item*
               </label>
               <input
                 type="text"
@@ -1552,7 +1617,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             {/* Conteúdo do Item */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Conteúdo do Item
+                Conteúdo do Item*
               </label>
               <textarea
                 value={currentItem.content || ''}
@@ -1587,13 +1652,28 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       if (count < 1) return;
       
       if (count > currentCount) {
-        // Adicionar cards
+        // Adicionar cards - herdar imagem e selo se estiverem habilitados em algum card existente
         const newItems = [...items];
+        const hasImageEnabled = items.some((item: any) => item.image);
+        const hasBadgeEnabled = items.some((item: any) => item.badge);
+        
         for (let i = currentCount; i < count; i++) {
-          newItems.push({
+          const newCard: any = {
             title: `Slide ${i + 1}`,
             text: 'Clique para editar o conteúdo',
-          });
+          };
+          
+          // Herdar imagem se estiver habilitada globalmente
+          if (hasImageEnabled) {
+            newCard.image = { src: '', alt: '' };
+          }
+          
+          // Herdar selo se estiver habilitado globalmente
+          if (hasBadgeEnabled) {
+            newCard.badge = { src: '', alt: '' };
+          }
+          
+          newItems.push(newCard);
         }
         updateContent('items', newItems);
       } else if (count < currentCount) {
@@ -1730,7 +1810,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             {/* Título */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Título
+                Título*
               </label>
               <input
                 type="text"
@@ -1744,7 +1824,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             {/* Texto */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Texto
+                Texto*
               </label>
               <textarea
                 value={currentCard.text || ''}
@@ -1782,10 +1862,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             </label>
           </div>
 
-          {/* Configuração de Selo Global */}
-          <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+          {/* Configuração de Selo Global - só exibe quando Habilitar Imagem estiver ativado */}
+          {items.some((item: any) => item.image) && (
+          <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
             <div className="flex items-center gap-2">
-              <Award className="w-5 h-5 text-green-600" />
+              <Award className="w-5 h-5 text-blue-600" />
               <div>
                 <p className="text-sm font-medium text-gray-700">Habilitar Selo</p>
                 <p className="text-xs text-gray-500">Aplica a todos os cards • Clique no selo de cada card para configurar individualmente</p>
@@ -1798,9 +1879,10 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
                 onChange={() => toggleAllCardsFeature('badge')}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
+          )}
           
           {items.some((item: any) => item.badge) && (
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1882,7 +1964,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         {/* Pergunta */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Pergunta
+            Pergunta*
           </label>
           <textarea
             value={content.question || ''}
@@ -1999,7 +2081,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         {/* Pergunta */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Pergunta
+            Pergunta*
           </label>
           <textarea
             value={content.question || ''}
@@ -2013,7 +2095,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         {/* Resposta Correta */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Resposta Correta
+            Resposta Correta*
           </label>
           <div className="flex space-x-4">
             <button
@@ -2121,7 +2203,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         {/* Pergunta */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Pergunta
+            Pergunta*
           </label>
           <textarea
             value={content.question || ''}
@@ -2136,7 +2218,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         <div>
           <div className="flex items-center justify-between mb-3">
             <label className="text-sm font-medium text-gray-700">
-              Itens para Enumeração
+              Itens para Enumeração*
             </label>
             <button
               onClick={addItem}
@@ -2227,7 +2309,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         {/* Pergunta */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Pergunta
+            Pergunta*
           </label>
           <textarea
             value={content.question || ''}
@@ -2337,6 +2419,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         return renderHeadingProperties();
       case 'text':
         return renderTextProperties();
+      case 'badge':
+        return renderBadgeProperties();
       case 'image':
         return renderImageProperties();
       case 'button':

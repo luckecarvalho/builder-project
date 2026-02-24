@@ -182,17 +182,6 @@ const VideoBlock: React.FC<VideoBlockComponentProps> = ({
           </div>
         )}
 
-        {/* Descrição (sempre visível no modo de edição) */}
-        <div className="mb-2">
-          <textarea
-            value={description}
-            onChange={handleDescriptionChange}
-            placeholder="Descrição do vídeo (obrigatória para acessibilidade)..."
-            className="w-full px-2 py-1 text-xs border border-gray-300 rounded resize-none"
-            rows={2}
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
 
         {/* Preview do vídeo */}
         <div className="relative">

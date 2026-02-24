@@ -7,11 +7,17 @@ import {
   AlignCenter, 
   AlignRight, 
   AlignJustify,
-  Type,
-  Palette,
-  Minus,
-  Plus
+  List,
+  ListOrdered,
+  Indent,
+  Outdent,
 } from 'lucide-react';
+
+/** Estilos de marcador para lista não ordenada (compatível com TextBlock) */
+export type UnorderedListMarkerStyle = 'dash' | 'bullet' | 'circle' | 'square' | 'asterisk';
+
+/** Estilo da lista numerada */
+export type OrderedListStyle = 'decimal' | 'alpha';
 
 interface TextFormattingToolbarProps {
   onFormatChange: (format: string, value?: any) => void;
@@ -24,8 +30,24 @@ interface TextFormattingToolbarProps {
     fontSize?: number;
     color?: string;
     backgroundColor?: string;
+    listMarkerStyle?: UnorderedListMarkerStyle;
+    orderedListActive?: boolean;
+    orderedListStyle?: OrderedListStyle;
   };
 }
+
+const UNORDERED_MARKER_OPTIONS: { id: UnorderedListMarkerStyle; char: string; label: string }[] = [
+  { id: 'dash', char: '-', label: 'Traço' },
+  { id: 'bullet', char: '•', label: 'Bullet' },
+  { id: 'circle', char: '◦', label: 'Círculo' },
+  { id: 'square', char: '▪', label: 'Quadrado' },
+  { id: 'asterisk', char: '*', label: 'Asterisco' },
+];
+
+const ORDERED_STYLE_OPTIONS: { id: OrderedListStyle; label: string; sample: string }[] = [
+  { id: 'decimal', label: 'Numeração (1, 2, 3)', sample: '1. 2. 3.' },
+  { id: 'alpha', label: 'Alfabética (a, b, c)', sample: 'a. b. c.' },
+];
 
 const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
   onFormatChange,
@@ -41,6 +63,9 @@ const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
 
   const [isFontColorOpen, setIsFontColorOpen] = React.useState(false);
   const [isBgColorOpen, setIsBgColorOpen] = React.useState(false);
+  const [isFontSizeOpen, setIsFontSizeOpen] = React.useState(false);
+  const [listDropdownOpen, setListDropdownOpen] = React.useState<'unordered' | 'ordered' | null>(null);
+  const [isAlignDropdownOpen, setIsAlignDropdownOpen] = React.useState(false);
 
   const handleFontSizeChange = (size: number) => {
     onFormatChange('fontSize', size);
@@ -56,6 +81,31 @@ const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
 
   const handleAlignChange = (align: 'left' | 'center' | 'right' | 'justify') => {
     onFormatChange('align', align);
+    setIsAlignDropdownOpen(false);
+  };
+
+  const currentAlign = currentFormats.align ?? 'left';
+  const AlignIcon = currentAlign === 'center' ? AlignCenter : currentAlign === 'right' ? AlignRight : currentAlign === 'justify' ? AlignJustify : AlignLeft;
+
+  const handleUnorderedMarkerStyle = (style: UnorderedListMarkerStyle) => {
+    onFormatChange('unorderedList', style);
+    setListDropdownOpen(null);
+  };
+
+  const handleOrderedStyle = (style: OrderedListStyle) => {
+    onFormatChange('orderedList', style);
+    setListDropdownOpen(null);
+  };
+
+  const currentMarkerOption = UNORDERED_MARKER_OPTIONS.find(o => o.id === currentFormats.listMarkerStyle) ?? UNORDERED_MARKER_OPTIONS[0];
+  const currentOrderedOption = ORDERED_STYLE_OPTIONS.find(o => o.id === (currentFormats.orderedListStyle ?? 'decimal')) ?? ORDERED_STYLE_OPTIONS[0];
+
+  const handleIndentChange = (direction: 'in' | 'out') => {
+    if (direction === 'in') {
+      onFormatChange('indent');
+    } else {
+      onFormatChange('outdent');
+    }
   };
 
   const toggleFormat = (format: 'bold' | 'italic' | 'underline') => {
@@ -109,62 +159,201 @@ const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         {/* Separador */}
         <div className="h-6 w-px bg-gray-300"></div>
 
-        {/* Grupo: Alinhamento */}
+        {/* Grupo: Listas (cada um com ícone + dropdown) e Recuo */}
         <div className="flex items-center space-x-1">
-          <span className="text-xs text-gray-500 font-medium mr-2">Alinhar:</span>
+          <span className="text-xs text-gray-500 font-medium mr-2">Lista:</span>
+
+          {/* Lista com marcadores (bullet) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setListDropdownOpen(listDropdownOpen === 'unordered' ? null : 'unordered')}
+              className={`flex items-center rounded hover:bg-gray-100 transition-colors border border-transparent ${
+                currentFormats.listMarkerStyle ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
+              }`}
+              title="Lista com marcadores"
+            >
+              <span className="p-2 flex items-center justify-center">
+                <List className="w-4 h-4" />
+              </span>
+              <span className="pr-1.5 flex items-center">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </span>
+            </button>
+            {listDropdownOpen === 'unordered' && (
+              <div
+                className="absolute z-20 mt-1 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[10rem]"
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                {UNORDERED_MARKER_OPTIONS.map(({ id, char, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleUnorderedMarkerStyle(id)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 ${
+                      currentFormats.listMarkerStyle === id ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                    }`}
+                  >
+                    <span className="w-5 text-center text-base">{char}</span>
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 3) Lista numerada */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setListDropdownOpen(listDropdownOpen === 'ordered' ? null : 'ordered')}
+              className={`flex items-center rounded hover:bg-gray-100 transition-colors border border-transparent ${
+                currentFormats.orderedListActive ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
+              }`}
+              title="Lista numerada"
+            >
+              <span className="p-2 flex items-center justify-center">
+                <ListOrdered className="w-4 h-4" />
+              </span>
+              <span className="pr-1.5 flex items-center">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </span>
+            </button>
+            {listDropdownOpen === 'ordered' && (
+              <div
+                className="absolute z-20 mt-1 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[12rem]"
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                {ORDERED_STYLE_OPTIONS.map(({ id, label, sample }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleOrderedStyle(id)}
+                    className={`w-full flex flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-gray-100 ${
+                      (currentFormats.orderedListStyle ?? 'decimal') === id ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className="text-xs text-gray-500">{sample}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <button
-            onClick={() => handleAlignChange('left')}
-            className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-              currentFormats.align === 'left' ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
-            }`}
-            title="Alinhar à esquerda"
+            type="button"
+            onClick={() => handleIndentChange('in')}
+            className="p-2 rounded hover:bg-gray-100 transition-colors text-gray-600"
+            title="Aumentar recuo"
           >
-            <AlignLeft className="w-4 h-4" />
+            <Indent className="w-4 h-4" />
           </button>
           <button
-            onClick={() => handleAlignChange('center')}
-            className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-              currentFormats.align === 'center' ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
-            }`}
-            title="Centralizar"
+            type="button"
+            onClick={() => handleIndentChange('out')}
+            className="p-2 rounded hover:bg-gray-100 transition-colors text-gray-600"
+            title="Diminuir recuo"
           >
-            <AlignCenter className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleAlignChange('right')}
-            className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-              currentFormats.align === 'right' ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
-            }`}
-            title="Alinhar à direita"
-          >
-            <AlignRight className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleAlignChange('justify')}
-            className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-              currentFormats.align === 'justify' ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
-            }`}
-            title="Justificar"
-          >
-            <AlignJustify className="w-4 h-4" />
+            <Outdent className="w-4 h-4" />
           </button>
         </div>
 
         {/* Separador */}
         <div className="h-6 w-px bg-gray-300"></div>
 
-        {/* Grupo: Tamanho da Fonte */}
-        <div className="flex items-center space-x-2">
+        {/* Grupo: Alinhamento (dropdown) */}
+        <div className="flex items-center space-x-1">
+          <span className="text-xs text-gray-500 font-medium mr-2">Alinhar:</span>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsAlignDropdownOpen(!isAlignDropdownOpen)}
+              className={`flex items-center rounded hover:bg-gray-100 transition-colors border border-transparent ${
+                currentFormats.align ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
+              }`}
+              title="Alinhamento"
+            >
+              <span className="p-2 flex items-center justify-center">
+                <AlignIcon className="w-4 h-4" />
+              </span>
+              <span className="pr-1.5 flex items-center">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </span>
+            </button>
+            {isAlignDropdownOpen && (
+              <div
+                className="absolute z-20 mt-1 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[10rem]"
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                {[
+                  { id: 'left' as const, label: 'Esquerda', Icon: AlignLeft },
+                  { id: 'center' as const, label: 'Centro', Icon: AlignCenter },
+                  { id: 'right' as const, label: 'Direita', Icon: AlignRight },
+                  { id: 'justify' as const, label: 'Justificado', Icon: AlignJustify },
+                ].map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleAlignChange(id)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-100 ${
+                      currentFormats.align === id ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Separador */}
+        <div className="h-6 w-px bg-gray-300"></div>
+
+        {/* Grupo: Tamanho da Fonte (dropdown customizado para não roubar foco do editor) */}
+        <div className="relative flex items-center space-x-2">
           <span className="text-xs text-gray-500 font-medium">Tamanho:</span>
-          <select
-            value={currentFormats.fontSize || 16}
-            onChange={(e) => handleFontSizeChange(parseInt(e.target.value))}
-            className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          <button
+            type="button"
+            onClick={() => setIsFontSizeOpen(!isFontSizeOpen)}
+            className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 min-w-[4rem]"
+            title="Tamanho da fonte"
           >
-            {fontSizes.map(size => (
-              <option key={size} value={size}>{size}px</option>
-            ))}
-          </select>
+            <span className="text-gray-700">{currentFormats.fontSize || 16}px</span>
+            <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {isFontSizeOpen && (
+            <div
+              className="absolute z-20 mt-2 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[5rem]"
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {fontSizes.map(size => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => {
+                    handleFontSizeChange(size);
+                    setIsFontSizeOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 ${
+                    (currentFormats.fontSize || 16) === size ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-700'
+                  }`}
+                >
+                  {size}px
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Separador */}

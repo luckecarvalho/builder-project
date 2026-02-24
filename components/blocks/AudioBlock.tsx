@@ -85,24 +85,11 @@ const AudioBlock: React.FC<AudioBlockComponentProps> = ({
         className={`relative group ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
         onClick={onSelect}
       >
-        {/* Controles de edição */}
-        {isSelected && (
-          <div className="absolute -top-8 left-0 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10">
-            <p className="text-xs text-gray-600">
-              Configure as propriedades no painel lateral
-            </p>
-          </div>
-        )}
-
         {/* Preview do áudio */}
         <div className="relative">
           {src ? (
             <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-              {/* Debug info */}
-              <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
-                <strong>Debug:</strong> src={src ? 'presente' : 'ausente'}, title={title || 'sem título'}
-              </div>
-              
+                           
               {/* Player de áudio */}
               <div className="flex items-center space-x-4 mb-4">
                 <button
@@ -130,16 +117,6 @@ const AudioBlock: React.FC<AudioBlockComponentProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownload();
-                  }}
-                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                  title="Download"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
               </div>
 
               {/* Barra de progresso */}

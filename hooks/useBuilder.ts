@@ -176,6 +176,10 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
 
   const historyRef = useRef<Page[]>([state.page]);
   const historyIndexRef = useRef<number>(0);
+  const pendingAddColumnRef = useRef<{ rowId: string; afterColumnId?: string } | null>(null);
+  const pendingDuplicateBlockRef = useRef<{ rowId: string; columnId: string; blockId: string } | null>(null);
+  const pendingAddBlockRef = useRef<{ rowId: string; columnId: string; blockType: string; afterBlockId?: string } | null>(null);
+  const isAddingRowRef = useRef<boolean>(false);
 
   const saveToHistory = useCallback((page: Page) => {
     const newHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
@@ -236,7 +240,15 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
   }, []);
 
   const addRow = useCallback((afterRowId?: string, columns = 1) => {
+    // Prevenir chamadas duplicadas
+    if (isAddingRowRef.current) {
+      return;
+    }
+    
+    isAddingRowRef.current = true;
+    
     setState(prev => {
+      // Verificar novamente dentro do setState para garantir que não há duplicação
       const newRow: Row = {
         id: generateId(),
         style: {
@@ -253,13 +265,23 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
       const newRows = [...prev.page.rows];
       if (afterRowId) {
         const index = newRows.findIndex(row => row.id === afterRowId);
-        newRows.splice(index + 1, 0, newRow);
+        if (index !== -1) {
+          newRows.splice(index + 1, 0, newRow);
+        } else {
+          newRows.push(newRow);
+        }
       } else {
         newRows.push(newRow);
       }
 
       const newPage = { ...prev.page, rows: newRows };
       saveToHistory(newPage);
+      
+      // Resetar o flag após um pequeno delay para permitir que o estado seja atualizado
+      setTimeout(() => {
+        isAddingRowRef.current = false;
+      }, 300);
+      
       return { ...prev, page: newPage };
     });
   }, [generateId, saveToHistory]);
@@ -339,9 +361,15 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
   }, [saveToHistory]);
 
   const addColumn = useCallback((rowId: string, afterColumnId?: string) => {
+    pendingAddColumnRef.current = { rowId, afterColumnId };
     setState(prev => {
+      const pending = pendingAddColumnRef.current;
+      if (!pending) return prev;
+      pendingAddColumnRef.current = null;
+      const { rowId: rId, afterColumnId: afterId } = pending;
+
       const newRows = prev.page.rows.map(row => {
-        if (row.id !== rowId) return row;
+        if (row.id !== rId) return row;
         
         const newColumn: Column = {
           id: generateId(),
@@ -350,14 +378,13 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
         };
         
         const newColumns = [...row.columns];
-        if (afterColumnId) {
-          const index = newColumns.findIndex(col => col.id === afterColumnId);
+        if (afterId) {
+          const index = newColumns.findIndex(col => col.id === afterId);
           newColumns.splice(index + 1, 0, newColumn);
         } else {
           newColumns.push(newColumn);
         }
         
-        // Ajustar spans para não exceder 12
         const totalColumns = newColumns.length;
         newColumns.forEach(col => {
           col.grid.span = {
@@ -524,21 +551,26 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
 
   // Block operations
   const addBlock = useCallback((rowId: string, columnId: string, blockType: string, afterBlockId?: string) => {
+    pendingAddBlockRef.current = { rowId, columnId, blockType, afterBlockId };
     setState(prev => {
+      const pending = pendingAddBlockRef.current;
+      if (!pending) return prev;
+      pendingAddBlockRef.current = null;
+      const { rowId: rId, columnId: cId, blockType: bType, afterBlockId: afterId } = pending;
+
       const newRows = prev.page.rows.map(row => {
-        if (row.id !== rowId) return row;
+        if (row.id !== rId) return row;
         return {
           ...row,
           columns: row.columns.map(col => {
-            if (col.id !== columnId) return col;
+            if (col.id !== cId) return col;
             
-            // Criar novo bloco com propriedades padrão baseadas no tipo
             const newBlock: Block = {
               props: {
                 id: generateId(),
-                type: blockType,
+                type: bType,
                 version: '1.0.0',
-                content: getDefaultBlockContent(blockType),
+                content: getDefaultBlockContent(bType),
                 style: {},
                 layout: {},
                 accessibility: {},
@@ -546,8 +578,8 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
             };
             
             const newBlocks = [...col.blocks];
-            if (afterBlockId) {
-              const index = newBlocks.findIndex(block => block.props.id === afterBlockId);
+            if (afterId) {
+              const index = newBlocks.findIndex(block => block.props.id === afterId);
               newBlocks.splice(index + 1, 0, newBlock);
             } else {
               newBlocks.push(newBlock);
@@ -620,15 +652,21 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
   }, [saveToHistory]);
 
   const duplicateBlock = useCallback((rowId: string, columnId: string, blockId: string) => {
+    pendingDuplicateBlockRef.current = { rowId, columnId, blockId };
     setState(prev => {
+      const pending = pendingDuplicateBlockRef.current;
+      if (!pending) return prev;
+      pendingDuplicateBlockRef.current = null;
+      const { rowId: rId, columnId: cId, blockId: bId } = pending;
+
       const newRows = prev.page.rows.map(row => {
-        if (row.id !== rowId) return row;
+        if (row.id !== rId) return row;
         return {
           ...row,
           columns: row.columns.map(col => {
-            if (col.id !== columnId) return col;
+            if (col.id !== cId) return col;
             
-            const blockIndex = col.blocks.findIndex(block => block.props.id === blockId);
+            const blockIndex = col.blocks.findIndex(block => block.props.id === bId);
             if (blockIndex === -1) return col;
             
             const originalBlock = col.blocks[blockIndex];
