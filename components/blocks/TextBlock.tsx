@@ -618,6 +618,7 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
             ref={textareaRef}
             value={typeof html === 'string' ? html.replace(/<[^>]*>/g, '') : ''}
             onChange={handleTextChange}
+<<<<<<< HEAD
             onKeyDown={handleTextAreaKeyDown}
             onFocus={() => {
               if (!globalFormattingToolbar) return;
@@ -657,6 +658,17 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
                 onClose: () => globalFormattingToolbar.hide(),
                 currentFormats: currentFormatsToShow,
               });
+=======
+            onFocus={() => {
+              if (globalFormattingToolbar) {
+                globalFormattingToolbar.show({
+                  isVisible: true,
+                  onFormatChange: handleFormatChange,
+                  onClose: () => globalFormattingToolbar.hide(),
+                  currentFormats: formats
+                });
+              }
+>>>>>>> b9800dad79d66ea7a91d38c2e2185fb68c2732b7
             }}
             onBlur={() => {
               if (globalFormattingToolbar) {

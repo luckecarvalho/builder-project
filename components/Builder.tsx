@@ -853,7 +853,18 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                 <div
                                   key={block.props.id}
                                   data-block-id={block.props.id}
+<<<<<<< HEAD
                                   draggable={false}
+=======
+                                  draggable={!isPreview && !isResizing}
+                                  onDragStart={(e) => {
+                                    if (!isResizing) {
+                                      handleBlockDragStart(e, block.props.id, row.id, column.id);
+                                    } else {
+                                      e.preventDefault();
+                                    }
+                                  }}
+>>>>>>> b9800dad79d66ea7a91d38c2e2185fb68c2732b7
                                   onDragOver={(e) => handleBlockDragOver(e, block.props.id)}
                                   onDragLeave={handleBlockDragLeave}
                                   onDrop={(e) => handleBlockDrop(e, row.id, column.id, block.props.id)}
@@ -876,6 +887,7 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                       : 'w-full'
                                   }`}
                                   style={{
+<<<<<<< HEAD
                                     // Reserva espaço no topo para os controles do bloco,
                                     // evitando que fiquem sobre o conteúdo
                                     paddingTop: !isPreview ? '1.75rem' : undefined,
@@ -1129,6 +1141,249 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                     </div>
                                   )}
 
+=======
+                                    // Alinhamento horizontal usando margin auto (funciona em ambos os modos)
+                                    marginLeft: (blockAlignment === 'right' || blockAlignment === 'center') && column.alignment !== 'justify' ? 'auto' : undefined,
+                                    marginRight: blockAlignment === 'right' && column.alignment !== 'justify' ? '0' : 
+                                                 blockAlignment === 'center' && column.alignment !== 'justify' ? 'auto' : undefined,
+                                    
+                                    // Padding para hover border (apenas no modo edição)
+                                    padding: !isPreview ? '4px' : undefined,
+                                    margin: !isPreview ? '-4px' : undefined,
+                                    
+                                    // Alinhamento próprio do bloco (se não seguir o da coluna)
+                                    alignSelf: column.alignment === 'justify' ? 'stretch' : 
+                                              blockAlignment === 'center' ? 'center' :
+                                              blockAlignment === 'right' ? 'flex-end' :
+                                              'flex-start',
+                                    
+                                    // Altura mínima do bloco aplicada no wrapper principal (funciona em ambos os modos)
+                                    minHeight: blockMinHeight ? `${blockMinHeight}px` : undefined,
+                                  }}
+                                >
+                                  {/* Controles do Bloco */}
+                                  {!isPreview && (
+                                    <div className="absolute -top-2 -left-2 flex items-center opacity-0 group-hover/block:opacity-100 transition-opacity z-10 block-controls-container bg-white rounded-lg border border-gray-200 shadow-sm py-1 px-0.5">
+                                      
+                                      <button
+                                        className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors flex items-center justify-center cursor-move"
+                                        title="Reordenar bloco (arrastar o bloco)"
+                                      >
+                                        <GripVertical className="w-3.5 h-3.5" />
+                                      </button>
+                                      <div className="w-px h-4 bg-gray-200 flex-shrink-0" aria-hidden />
+                                      <button
+                                        onClick={() => builder.selectBlock(block.props.id)}
+                                        className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors flex items-center justify-center"
+                                        title="Selecionar bloco"
+                                      >
+                                        <Settings className="w-3.5 h-3.5" />
+                                      </button>
+                                      <div className="w-px h-4 bg-gray-200 flex-shrink-0" aria-hidden />
+                                      <div className="relative block-alignment-dropdown-container z-20">
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowBlockAlignmentDropdown(
+                                              showBlockAlignmentDropdown?.blockId === block.props.id
+                                                ? null
+                                                : { rowId: row.id, columnId: column.id, blockId: block.props.id }
+                                            );
+                                          }}
+                                          className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors flex items-center justify-center"
+                                          title="Alinhar bloco (horizontal e vertical)"
+                                          onMouseDown={(e) => e.stopPropagation()}
+                                        >
+                                          {blockAlignment === 'center' ? <AlignCenterHorizontal className="w-3.5 h-3.5" /> :
+                                           blockAlignment === 'right' ? <AlignEndHorizontal className="w-3.5 h-3.5" /> :
+                                           <AlignStartHorizontal className="w-3.5 h-3.5" />}
+                                        </button>
+                                        {showBlockAlignmentDropdown?.blockId === block.props.id && (
+                                          <div
+                                            className="absolute top-8 left-0 bg-white border border-gray-200 rounded-lg shadow-lg z-[100] p-3 flex flex-col gap-3 block-alignment-dropdown min-w-[200px]"
+                                            style={{ 
+                                              marginBottom: '8px',
+                                              maxWidth: 'calc(100vw - 16px)'
+                                            }}
+                                            ref={(dropdownEl) => {
+                                              if (dropdownEl) {
+                                                // Calcular posição baseado no botão pai
+                                                const containerEl = dropdownEl.parentElement;
+                                                const btnEl = containerEl?.querySelector('button');
+                                                if (btnEl) {
+                                                  const btnRect = btnEl.getBoundingClientRect();
+                                                  const dropdownWidth = 200;
+                                                  const spaceOnLeft = btnRect.left;
+                                                  const spaceOnRight = window.innerWidth - btnRect.left;
+                                                  
+                                                  // Se não há espaço suficiente à esquerda, mas há à direita, alinhar à direita
+                                                  if (spaceOnLeft < dropdownWidth && spaceOnRight >= dropdownWidth) {
+                                                    dropdownEl.style.left = 'auto';
+                                                    dropdownEl.style.right = '0';
+                                                  } else {
+                                                    dropdownEl.style.left = '0';
+                                                    dropdownEl.style.right = 'auto';
+                                                  }
+                                                }
+                                              }
+                                            }}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onMouseEnter={(e) => {
+                                              e.stopPropagation();
+                                              // Manter o dropdown aberto quando o mouse entra nele
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              // Não fechar automaticamente ao sair do dropdown
+                                              e.stopPropagation();
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            {/* Alinhamento Horizontal - controla esquerda/centro/direita */}
+                                            <div>
+                                              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Horizontal</label>
+                                              <div className="flex rounded-md overflow-hidden border border-gray-200 bg-gray-100 p-0.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    builder.updateBlock(row.id, column.id, block.props.id, {
+                                                      layout: {
+                                                        ...block.props.layout,
+                                                        alignment: 'left'
+                                                      }
+                                                    });
+                                                    setShowBlockAlignmentDropdown(null);
+                                                  }}
+                                                  className={`flex-1 p-1.5 flex items-center justify-center ${blockAlignment === 'left' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                                  title="Alinhar à esquerda"
+                                                >
+                                                  <AlignStartVertical className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    builder.updateBlock(row.id, column.id, block.props.id, {
+                                                      layout: {
+                                                        ...block.props.layout,
+                                                        alignment: 'center'
+                                                      }
+                                                    });
+                                                    setShowBlockAlignmentDropdown(null);
+                                                  }}
+                                                  className={`flex-1 p-1.5 flex items-center justify-center ${blockAlignment === 'center' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                                  title="Centralizar horizontalmente"
+                                                >
+                                                  <AlignCenterVertical className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    builder.updateBlock(row.id, column.id, block.props.id, {
+                                                      layout: {
+                                                        ...block.props.layout,
+                                                        alignment: 'right'
+                                                      }
+                                                    });
+                                                    setShowBlockAlignmentDropdown(null);
+                                                  }}
+                                                  className={`flex-1 p-1.5 flex items-center justify-center ${blockAlignment === 'right' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                                  title="Alinhar à direita"
+                                                >
+                                                  <AlignEndVertical className="w-4 h-4" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                            
+                                            {/* Alinhamento Vertical - controla topo/centro/base */}
+                                            <div>
+                                              <label className="text-xs font-medium text-gray-600 mb-1.5 block">Vertical</label>
+                                              <div className="flex rounded-md overflow-hidden border border-gray-200 bg-gray-100 p-0.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    builder.updateBlock(row.id, column.id, block.props.id, {
+                                                      layout: {
+                                                        ...block.props.layout,
+                                                        alignmentVertical: 'top'
+                                                      }
+                                                    });
+                                                    setShowBlockAlignmentDropdown(null);
+                                                  }}
+                                                  className={`flex-1 p-1.5 flex items-center justify-center ${blockAlignmentVertical === 'top' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                                  title="Alinhar ao topo"
+                                                >
+                                                  <AlignStartHorizontal className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    builder.updateBlock(row.id, column.id, block.props.id, {
+                                                      layout: {
+                                                        ...block.props.layout,
+                                                        alignmentVertical: 'center'
+                                                      }
+                                                    });
+                                                    setShowBlockAlignmentDropdown(null);
+                                                  }}
+                                                  className={`flex-1 p-1.5 flex items-center justify-center ${blockAlignmentVertical === 'center' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                                  title="Centralizar verticalmente"
+                                                >
+                                                  <AlignCenterHorizontal className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    builder.updateBlock(row.id, column.id, block.props.id, {
+                                                      layout: {
+                                                        ...block.props.layout,
+                                                        alignmentVertical: 'bottom'
+                                                      }
+                                                    });
+                                                    setShowBlockAlignmentDropdown(null);
+                                                  }}
+                                                  className={`flex-1 p-1.5 flex items-center justify-center ${blockAlignmentVertical === 'bottom' ? 'bg-white rounded shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                                  title="Alinhar à base"
+                                                >
+                                                  <AlignEndHorizontal className="w-4 h-4" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      <div className="w-px h-4 bg-gray-200 flex-shrink-0" aria-hidden />
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          builder.duplicateBlock(row.id, column.id, block.props.id);
+                                        }}
+                                        className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors flex items-center justify-center"
+                                        title="Duplicar bloco"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                      <div className="w-px h-4 bg-gray-200 flex-shrink-0" aria-hidden />
+                                      <button
+                                        onClick={() => builder.deleteBlock(
+                                          row.id,
+                                          column.id,
+                                          block.props.id
+                                        )}
+                                        className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-red-600 transition-colors flex items-center justify-center"
+                                        title="Deletar bloco"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+
+>>>>>>> b9800dad79d66ea7a91d38c2e2185fb68c2732b7
                                   {/* Wrapper interno do bloco com alinhamento aplicado */}
                                   <div
                                     className="w-full min-w-0"

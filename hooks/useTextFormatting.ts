@@ -1,7 +1,10 @@
 import React, { useState, useCallback } from 'react';
+<<<<<<< HEAD
 
 export type UnorderedListMarkerStyle = 'dash' | 'bullet' | 'circle' | 'square' | 'asterisk';
 export type OrderedListStyle = 'decimal' | 'alpha';
+=======
+>>>>>>> b9800dad79d66ea7a91d38c2e2185fb68c2732b7
 
 export interface TextFormats {
   bold?: boolean;
@@ -14,6 +17,26 @@ export interface TextFormats {
   listMarkerStyle?: UnorderedListMarkerStyle;
   orderedListActive?: boolean;
   orderedListStyle?: OrderedListStyle;
+}
+
+/** Converte formatos de texto em objeto de estilo CSS (exportado para uso em TableBlock etc.) */
+export function getStyleFromFormats(formats: TextFormats): React.CSSProperties {
+  const style: React.CSSProperties = {};
+  if (formats.bold) style.fontWeight = 'bold';
+  if (formats.italic) style.fontStyle = 'italic';
+  if (formats.underline) style.textDecoration = 'underline';
+  if (formats.fontSize) style.fontSize = `${formats.fontSize}px`;
+  if (formats.color) style.color = formats.color;
+  if (formats.backgroundColor) style.backgroundColor = formats.backgroundColor;
+  if (formats.align) {
+    switch (formats.align) {
+      case 'left': style.textAlign = 'left'; break;
+      case 'center': style.textAlign = 'center'; break;
+      case 'right': style.textAlign = 'right'; break;
+      case 'justify': style.textAlign = 'justify'; break;
+    }
+  }
+  return style;
 }
 
 /** Converte formatos de texto em objeto de estilo CSS (exportado para uso em TableBlock etc.) */

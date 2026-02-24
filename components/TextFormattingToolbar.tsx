@@ -64,8 +64,11 @@ const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
   const [isFontColorOpen, setIsFontColorOpen] = React.useState(false);
   const [isBgColorOpen, setIsBgColorOpen] = React.useState(false);
   const [isFontSizeOpen, setIsFontSizeOpen] = React.useState(false);
+<<<<<<< HEAD
   const [listDropdownOpen, setListDropdownOpen] = React.useState<'unordered' | 'ordered' | null>(null);
   const [isAlignDropdownOpen, setIsAlignDropdownOpen] = React.useState(false);
+=======
+>>>>>>> b9800dad79d66ea7a91d38c2e2185fb68c2732b7
 
   const handleFontSizeChange = (size: number) => {
     onFormatChange('fontSize', size);
@@ -266,6 +269,7 @@ const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         {/* Separador */}
         <div className="h-6 w-px bg-gray-300"></div>
 
+<<<<<<< HEAD
         {/* Grupo: Alinhamento (dropdown) */}
         <div className="flex items-center space-x-1">
           <span className="text-xs text-gray-500 font-medium mr-2">Alinhar:</span>
@@ -318,6 +322,8 @@ const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         {/* Separador */}
         <div className="h-6 w-px bg-gray-300"></div>
 
+=======
+>>>>>>> b9800dad79d66ea7a91d38c2e2185fb68c2732b7
         {/* Grupo: Tamanho da Fonte (dropdown customizado para não roubar foco do editor) */}
         <div className="relative flex items-center space-x-2">
           <span className="text-xs text-gray-500 font-medium">Tamanho:</span>
