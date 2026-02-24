@@ -853,7 +853,14 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                 <div
                                   key={block.props.id}
                                   data-block-id={block.props.id}
-                                  draggable={false}
+                                  draggable={!isPreview && !isResizing}
+                                  onDragStart={(e) => {
+                                    if (!isResizing) {
+                                      handleBlockDragStart(e, block.props.id, row.id, column.id);
+                                    } else {
+                                      e.preventDefault();
+                                    }
+                                  }}
                                   onDragOver={(e) => handleBlockDragOver(e, block.props.id)}
                                   onDragLeave={handleBlockDragLeave}
                                   onDrop={(e) => handleBlockDrop(e, row.id, column.id, block.props.id)}
@@ -876,10 +883,6 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                       : 'w-full'
                                   }`}
                                   style={{
-                                    // Reserva espaço no topo para os controles do bloco,
-                                    // evitando que fiquem sobre o conteúdo
-                                    paddingTop: !isPreview ? '1.75rem' : undefined,
-
                                     // Alinhamento horizontal usando margin auto (funciona em ambos os modos)
                                     marginLeft: (blockAlignment === 'right' || blockAlignment === 'center') && column.alignment !== 'justify' ? 'auto' : undefined,
                                     marginRight: blockAlignment === 'right' && column.alignment !== 'justify' ? '0' : 
@@ -901,17 +904,9 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                 >
                                   {/* Controles do Bloco */}
                                   {!isPreview && (
-                                    <div className="absolute top-0 left-0 flex items-center opacity-0 group-hover/block:opacity-100 transition-opacity z-10 block-controls-container bg-white rounded-lg border border-gray-200 shadow-sm py-1 px-0.5">
+                                    <div className="absolute -top-2 -left-2 flex items-center opacity-0 group-hover/block:opacity-100 transition-opacity z-10 block-controls-container bg-white rounded-lg border border-gray-200 shadow-sm py-1 px-0.5">
                                       
                                       <button
-                                        draggable={!isPreview && !isResizing}
-                                        onDragStart={(e) => {
-                                          if (!isResizing) {
-                                            handleBlockDragStart(e, block.props.id, row.id, column.id);
-                                          } else {
-                                            e.preventDefault();
-                                          }
-                                        }}
                                         className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors flex items-center justify-center cursor-move"
                                         title="Reordenar bloco (arrastar o bloco)"
                                       >
