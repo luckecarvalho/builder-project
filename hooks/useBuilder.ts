@@ -608,9 +608,31 @@ export function useBuilder(initialPage?: Page): BuilderState & BuilderActions {
               ...col,
               blocks: col.blocks.map(block => {
                 if (block.props.id !== blockId) return block;
+                const {
+                  content: patchContent,
+                  style: patchStyle,
+                  layout: patchLayout,
+                  accessibility: patchA11y,
+                  ...restUpdates
+                } = updates;
                 return {
                   ...block,
-                  props: { ...block.props, ...updates },
+                  props: {
+                    ...block.props,
+                    ...restUpdates,
+                    ...(patchContent !== undefined && {
+                      content: { ...(block.props.content || {}), ...patchContent },
+                    }),
+                    ...(patchStyle !== undefined && {
+                      style: { ...(block.props.style || {}), ...patchStyle },
+                    }),
+                    ...(patchLayout !== undefined && {
+                      layout: { ...(block.props.layout || {}), ...patchLayout },
+                    }),
+                    ...(patchA11y !== undefined && {
+                      accessibility: { ...(block.props.accessibility || {}), ...patchA11y },
+                    }),
+                  },
                 };
               }),
             };

@@ -21,6 +21,7 @@ import {
   QuizTrueFalseBlock,
   QuizEnumerationBlock,
   QuizEssayBlock,
+  EmbedBlock,
 } from './StubBlocks';
 
 // Registry de todos os blocos disponíveis
@@ -59,7 +60,7 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     defaultProps: {
       type: 'text',
       content: {
-        html: '<p>Digite seu texto aqui...</p>',
+        html: '',
         maxChars: 1000,
         allowHtml: true,
         allowLinks: true,
@@ -72,9 +73,9 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     name: 'Imagem',
     description: 'Bloco de imagem com texto alternativo',
     icon: 'Image',
-    category: 'midia',
+    category: 'mídia',
     validation: [
-      { field: 'content.src', type: 'required', message: 'URL da imagem é obrigatória' },
+      
       { field: 'content.alt', type: 'required', message: 'Texto alternativo é obrigatório para acessibilidade' },
     ],
     defaultProps: {
@@ -83,6 +84,9 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
         src: '',
         alt: '',
         lazyLoad: true,
+        interactionEnabled: false,
+        interactionPoints: [],
+        interactionActivePointId: undefined,
       },
     },
     renderer: 'ImageBlock',
@@ -92,7 +96,7 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     name: 'Vídeo',
     description: 'Bloco de vídeo (YouTube, Vimeo, URL)',
     icon: 'Play',
-    category: 'midia',
+    category: 'mídia',
     validation: [
       { field: 'content.url', type: 'required', message: 'URL do vídeo é obrigatória' },
       { field: 'content.title', type: 'required', message: 'Título do vídeo é obrigatório' },
@@ -116,7 +120,7 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     name: 'Áudio',
     description: 'Bloco de áudio/podcast',
     icon: 'Volume2',
-    category: 'midia',
+    category: 'mídia',
     validation: [
       { field: 'content.src', type: 'required', message: 'URL do áudio é obrigatória' },
       { field: 'content.title', type: 'required', message: 'Título do áudio é obrigatório' },
@@ -163,7 +167,10 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     description: 'Selo/badge com imagem e texto opcional',
     icon: 'Award',
     category: 'elementos',
-    validation: [],
+    validation: [
+      { field: 'content.src', type: 'required', message: 'Imagem do selo é obrigatória' },
+      { field: 'content.alt', type: 'required', message: 'Texto alternativo do selo é obrigatório' },
+    ],
     defaultProps: {
       type: 'badge',
       content: {
@@ -178,7 +185,7 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     name: 'Carrossel',
     description: 'Carrossel de itens com navegação',
     icon: 'RotateCcw',
-    category: 'interacao',
+    category: 'interação',
     validation: [
       { field: 'content.items', type: 'required', message: 'Carrossel deve ter pelo menos um item' },
     ],
@@ -187,8 +194,8 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
       content: {
         items: [
           {
-            title: 'Slide 1',
-            text: 'Conteúdo do slide 1',
+            title: '',
+            text: '',
           },
         ],
         showArrows: true,
@@ -202,7 +209,7 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     name: 'Abas',
     description: 'Sistema de abas com conteúdo',
     icon: 'Folder',
-    category: 'interacao',
+    category: 'interação',
     validation: [
       { field: 'content.tabs', type: 'required', message: 'Abas devem ter pelo menos 2 itens' },
     ],
@@ -211,12 +218,12 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
       content: {
         tabs: [
           {
-            title: 'Aba 1',
-            content: 'Conteúdo da aba 1',
+            title: '',
+            content: '',
           },
           {
-            title: 'Aba 2',
-            content: 'Conteúdo da aba 2',
+            title: '',
+            content: '',
           },
         ],
         activeTab: 0,
@@ -230,7 +237,7 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     name: 'Accordion',
     description: 'Accordion expansível com múltiplas seções',
     icon: 'ChevronDown',
-    category: 'interacao',
+    category: 'interação',
     validation: [
       { field: 'content.items', type: 'required', message: 'Accordion deve ter pelo menos um item' },
     ],
@@ -239,13 +246,13 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
       content: {
         items: [
           {
-            title: 'Accordion 1',
-            content: 'Conteúdo do accordion 1',
+            title: '',
+            content: '',
             isOpen: false,
           },
           {
-            title: 'Accordion 2',
-            content: 'Conteúdo do accordion 2',
+            title: '',
+            content: '',
             isOpen: false,
           },
         ],
@@ -278,26 +285,23 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     name: 'Modal',
     description: 'Modal com trigger e conteúdo',
     icon: 'Square',
-    category: 'interacao',
-    validation: [
-      { field: 'content.trigger', type: 'required', message: 'Trigger do modal é obrigatório' },
-      { field: 'content.content', type: 'required', message: 'Conteúdo do modal é obrigatório' },
-    ],
+    category: 'interação',
+    validation: [],
     defaultProps: {
       type: 'modal',
       content: {
         trigger: {
           type: 'text',
           content: {
-            html: '<p>Abrir Modal</p>',
+            html: '',
             maxChars: 1000,
             allowHtml: true,
             allowLinks: true,
           },
         },
         modalData: {
-          title: 'Título do Modal',
-          text: 'Conteúdo do modal...',
+          title: '',
+          text: '',
           hasImage: false,
           imageUrl: '',
           imageAlt: '',
@@ -351,7 +355,6 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
       type: 'quiz-true-false',
       content: {
         question: 'Esta afirmação é verdadeira ou falsa?',
-        correctAnswer: true,
         feedbacks: [
           { text: 'Resposta incorreta!', type: 'incorrect' },
           { text: 'Parabéns! Resposta correta!', type: 'correct' },
@@ -410,6 +413,23 @@ export const BLOCK_MANIFESTS: Record<string, BlockManifest> = {
     },
     renderer: 'QuizEssayBlock',
   },
+  'embed': {
+    type: 'embed',
+    name: 'Incorporar',
+    description: 'Conteúdo incorporado (H5P, etc.)',
+    icon: 'Code',
+    category: 'interação',
+    validation: [
+      { field: 'content.iframe', type: 'required', message: 'Código do iframe é obrigatório' },
+    ],
+    defaultProps: {
+      type: 'embed',
+      content: {
+        iframe: '',
+      },
+    },
+    renderer: 'EmbedBlock',
+  },
 };
 
 // Mapeamento de componentes
@@ -430,6 +450,7 @@ export const BLOCK_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'QuizTrueFalseBlock': QuizTrueFalseBlock,
   'QuizEnumerationBlock': QuizEnumerationBlock,
   'QuizEssayBlock': QuizEssayBlock,
+  'EmbedBlock': EmbedBlock,
 };
 
 // Função para obter o componente de um bloco

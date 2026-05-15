@@ -89,6 +89,8 @@ export interface BlockProps {
       lineHeight?: number;
       color?: string;
       textAlign?: 'left' | 'center' | 'right' | 'justify';
+      fontStyle?: string;
+      textDecoration?: string;
     };
     spacing?: SpacingConfig;
     colors?: {
@@ -183,6 +185,14 @@ export interface ImageBlockProps extends BlockProps {
       width: number;
       height: number;
     };
+    interactionEnabled?: boolean;
+    interactionPoints?: Array<{
+      id: string;
+      x: number; // porcentagem horizontal (0-100)
+      y: number; // porcentagem vertical (0-100)
+      text: string;
+    }>;
+    interactionActivePointId?: string;
   };
 }
 
@@ -387,7 +397,8 @@ export interface QuizMultipleChoiceBlockProps extends BlockProps {
 export interface QuizTrueFalseBlockProps extends BlockProps {
   content: {
     question: string;
-    correctAnswer: boolean;
+    /** Ausente até o autor escolher Verdadeiro ou Falso no painel ou no bloco */
+    correctAnswer?: boolean | null;
     feedbacks: Array<{
       text: string;
       type: 'correct' | 'incorrect';

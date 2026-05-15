@@ -1,8 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { TextBlockProps } from '@/types/builder';
-import TextFormattingToolbar from '../TextFormattingToolbar';
-import { useTextFormatting, TextFormats } from '@/hooks/useTextFormatting';
+import { TextFormats, UnorderedListMarkerStyle, OrderedListStyle } from '@/hooks/useTextFormatting';
 import { ValidationUtils } from '@/utils/validation';
+import {
+  removeUnderlineFromSelection,
+  restoreRangeInRoot,
+  ensureCommandState,
+  computeRichTextToolbarFormats,
+  wrapCurrentRangeWithSpanStyle,
+  applyUnorderedListMarkerAtSelection,
+  applyOrderedListStyleAtSelection,
+  isUnorderedListMarkerValue,
+  applyFontSizePxToRange,
+  ensureSelectionInsideEditor,
+} from '@/utils/richTextSelection';
 
 interface TextBlockComponentProps {
   block: { props: TextBlockProps };
@@ -21,6 +33,16 @@ interface TextBlockComponentProps {
   };
 }
 
+const TEXT_BLOCK_PLACEHOLDER = 'Digite seu texto aqui...';
+
+function isHtmlStoredEmpty(h: unknown): boolean {
+  if (typeof h !== 'string' || !h.trim()) return true;
+  const plain = ValidationUtils.stripHtmlTags(h).trim();
+  if (!plain) return true;
+  if (plain === TEXT_BLOCK_PLACEHOLDER) return true;
+  return false;
+}
+
 const TextBlock: React.FC<TextBlockComponentProps> = ({
   block,
   isSelected = false,
@@ -31,20 +53,52 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
 }) => {
   const { content, style } = block.props;
   const { html, maxChars, allowHtml, allowLinks } = content;
-  const [isRichEditMode, setIsRichEditMode] = useState(false);
   const [showFormattingToolbar, setShowFormattingToolbar] = useState(false);
-  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [editorFocused, setEditorFocused] = useState(false);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const lastSavedHtmlRef = useRef<string | null>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
 
-  // Ajustar altura do textarea automaticamente quando o conteúdo mudar ou componente montar
-  React.useEffect(() => {
-    if (textareaRef.current && isEditing) {
-      // Pequeno delay para garantir que o DOM está atualizado
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.style.height = 'auto';
-          textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+  // Guardar seleção apenas quando o foco está no editor (evita sobrescrever ao clicar na toolbar)
+  useEffect(() => {
+    if (!isEditing) return;
+    const editor = editorRef.current;
+    const onSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !editor) return;
+      if (document.activeElement !== editor) return;
+      const range = sel.getRangeAt(0);
+      if (editor.contains(range.commonAncestorContainer)) {
+        try {
+          savedSelectionRef.current = range.cloneRange();
+        } catch {
+          savedSelectionRef.current = null;
         }
-      }, 0);
+      }
+    };
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => document.removeEventListener('selectionchange', onSelectionChange);
+  }, [isEditing]);
+
+  // Sincronizar conteúdo externo (ex.: undo) para o contentEditable; evita sobrescrever edição local
+  useEffect(() => {
+    if (!isEditing) {
+      // Ao ir para Preview o contentEditable desmonta; ao voltar, o ref novo estaria vazio
+      // mas lastSavedHtmlRef ainda igualaria a `html` e o efeito pularia a hidratação.
+      lastSavedHtmlRef.current = null;
+      return;
+    }
+    const incoming = typeof html === 'string' ? html : '';
+    const effectiveIncoming = isHtmlStoredEmpty(incoming) ? '' : incoming;
+    if (lastSavedHtmlRef.current === effectiveIncoming) return;
+    const editor = editorRef.current;
+    if (editor) {
+      if (effectiveIncoming === '') {
+        editor.innerHTML = '<br>';
+      } else {
+        editor.innerHTML = incoming;
+      }
+      lastSavedHtmlRef.current = effectiveIncoming;
     }
   }, [html, isEditing]);
   
@@ -68,460 +122,280 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
     return initialFormats;
   });
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (onUpdate) {
-      onUpdate({
-        content: {
-          ...content,
-          html: e.target.value,
-        },
+  // Remove quaisquer tags HTML e normaliza o placeholder antigo para string vazia
+  const normalizePlainText = (raw: unknown): string => {
+    if (typeof raw !== 'string') return '';
+    const noTags = raw.replace(/<\/?[^>]+(>|$)/g, '');
+    const trimmed = noTags.trim();
+    if (trimmed === '' || trimmed === TEXT_BLOCK_PLACEHOLDER) {
+      return '';
+    }
+    return noTags;
+  };
+
+  const handleFormatChangeRef = useRef<(format: string, value?: any) => void>(() => {});
+
+  const saveContentFromEditor = useCallback((opts?: { flush?: boolean }) => {
+    const editor = editorRef.current;
+    if (!editor || !onUpdate) return;
+    let raw = editor.innerHTML ?? '';
+    const plainTrim = ValidationUtils.stripHtmlTags(raw).trim();
+    if (plainTrim === '' || plainTrim === TEXT_BLOCK_PLACEHOLDER) {
+      raw = '';
+      editor.innerHTML = '<br>';
+    }
+    const sanitized = raw === '' ? '' : ValidationUtils.sanitizeHtml(raw, allowLinks);
+    lastSavedHtmlRef.current = sanitized;
+    const payload = { content: { ...content, html: sanitized, allowHtml: true } };
+    if (opts?.flush) {
+      flushSync(() => {
+        onUpdate(payload);
       });
+    } else {
+      onUpdate(payload);
     }
-  };
+  }, [onUpdate, content, allowLinks]);
 
-  /** Trata Enter no textarea: continua lista na próxima linha ou sai do modo lista com 2º Enter */
-  const handleTextAreaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      handleFormatChange(e.shiftKey ? 'outdent' : 'indent', undefined);
-      return;
-    }
-    if (e.key !== 'Enter' || !textareaRef.current || !onUpdate) return;
+  const refreshToolbarFormatsFromSelection = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const fromDom = computeRichTextToolbarFormats(editor);
+    if (!fromDom) return;
 
-    const textarea = textareaRef.current;
-    const fullText = textarea.value ?? '';
-    const cursor = textarea.selectionStart ?? 0;
+    setFormats(fromDom);
+    globalFormattingToolbar?.show({
+      isVisible: true,
+      onFormatChange: (f, v) => handleFormatChangeRef.current(f, v),
+      onClose: () => globalFormattingToolbar.hide(),
+      currentFormats: fromDom,
+    });
+  }, [globalFormattingToolbar]);
 
-    const lineStart = fullText.lastIndexOf('\n', cursor - 1) + 1;
-    const lineEnd = fullText.indexOf('\n', cursor);
-    const lineEndVal = lineEnd === -1 ? fullText.length : lineEnd;
-    const currentLine = fullText.slice(lineStart, lineEndVal);
-
-    const leadingSpacesMatch = currentLine.match(/^(\s*)/);
-    const leadingSpaces = leadingSpacesMatch ? leadingSpacesMatch[1] : '';
-    const afterSpaces = currentLine.slice(leadingSpaces.length);
-
-    // Lista com marcador (-, *, •, ◦, ▪)
-    const unorderedMatch = afterSpaces.match(/^([-*•◦▪]\s+)(.*)$/);
-    if (unorderedMatch) {
-      e.preventDefault();
-      const contentAfterPrefix = unorderedMatch[2];
-      const isLineEmpty = !contentAfterPrefix.trim();
-      const insert = isLineEmpty
-        ? '\n'
-        : `\n${leadingSpaces}${unorderedMatch[1]}`;
-      const newText = fullText.slice(0, cursor) + insert + fullText.slice(cursor);
-      onUpdate({ content: { ...content, html: newText } });
-      const newCursor = cursor + insert.length;
-      setTimeout(() => {
-        textareaRef.current?.focus();
-        textareaRef.current?.setSelectionRange(newCursor, newCursor);
-      }, 0);
-      return;
-    }
-
-    // Lista numerada (1. , 2. , etc.)
-    const orderedMatch = afterSpaces.match(/^(\d+)[.)]\s+(.*)$/);
-    if (orderedMatch) {
-      e.preventDefault();
-      const num = parseInt(orderedMatch[1], 10);
-      const contentAfterPrefix = orderedMatch[2];
-      const isLineEmpty = !contentAfterPrefix.trim();
-      const insert = isLineEmpty
-        ? '\n'
-        : `\n${leadingSpaces}${num + 1}. `;
-      const newText = fullText.slice(0, cursor) + insert + fullText.slice(cursor);
-      onUpdate({ content: { ...content, html: newText } });
-      const newCursor = cursor + insert.length;
-      setTimeout(() => {
-        textareaRef.current?.focus();
-        textareaRef.current?.setSelectionRange(newCursor, newCursor);
-      }, 0);
-      return;
-    }
-  };
-
-  const handleFormatChange = (format: string, value: any) => {
-    // Comandos de lista e recuo: atuam diretamente nas linhas selecionadas do textarea
-    if (format === 'unorderedList' || format === 'orderedList' || format === 'indent' || format === 'outdent') {
-      if (!textareaRef.current || !onUpdate) return;
-
-      const textarea = textareaRef.current;
-      const fullText = textarea.value ?? '';
-      const start = textarea.selectionStart ?? 0;
-      const end = textarea.selectionEnd ?? 0;
-
-      const lineStart = fullText.lastIndexOf('\n', start - 1) + 1;
-      const nextNewline = fullText.indexOf('\n', end);
-      const lineEnd = nextNewline === -1 ? fullText.length : nextNewline;
-
-      const selectedBlock = fullText.substring(lineStart, lineEnd);
-      const lines = selectedBlock.split('\n');
-
-      let newLines = [...lines];
-
-      const UNORDERED_MARKER_CHAR: Record<string, string> = {
-        dash: '-', bullet: '•', circle: '◦', square: '▪', asterisk: '*',
-      };
-      const CHAR_TO_STYLE: Record<string, string> = {
-        '-': 'dash', '•': 'bullet', '◦': 'circle', '▪': 'square', '*': 'asterisk',
-      };
-      const markerStyle = (value && typeof value === 'string' && UNORDERED_MARKER_CHAR[value]) ? value : 'dash';
-      const markerChar = UNORDERED_MARKER_CHAR[markerStyle];
-
-      const orderedStyle = (value && (value === 'decimal' || value === 'alpha')) ? value : 'decimal';
-      const toAlpha = (n: number) => (n >= 1 && n <= 26) ? String.fromCharCode(96 + n) : String(n);
-      const toRoman = (n: number) => {
-        const map: [number, string][] = [[10,'x'],[9,'ix'],[5,'v'],[4,'iv'],[1,'i']];
-        let s = '';
-        for (const [v, r] of map) while (n >= v) { s += r; n -= v; }
-        return s;
-      };
-      const orderedPrefix = (index: number) => {
-        if (orderedStyle === 'decimal') return `${index}. `;
-        if (orderedStyle === 'alpha') return `${toAlpha(index)}. `;
-        return `${toRoman(index)}. `;
-      };
-
-      const stripListPrefix = (s: string) => s.replace(/^([-*•◦▪]\s+|\d+[.)]\s+|[a-z]+[.)]\s+)/i, '');
-
-      const hadOrderedRegex = /^\d+[.)]\s+|^[a-z]+[.)]\s+/i;
-
-      if (format === 'unorderedList') {
-        const stripUnorderedOnly = (s: string) => s.replace(/^([-*•◦▪]\s+|\d+[.)]\s+)/, '');
-        newLines = lines.map(line => {
-          const leadingSpacesMatch = line.match(/^(\s*)/);
-          const leadingSpaces = leadingSpacesMatch ? leadingSpacesMatch[1] : '';
-          const trimmed = line.slice(leadingSpaces.length);
-          if (!trimmed) return line;
-          const hadUnordered = /^([-*•◦▪])\s+/.exec(trimmed);
-          const content = stripUnorderedOnly(trimmed);
-          const currentLineStyle = hadUnordered ? CHAR_TO_STYLE[hadUnordered[1]] : undefined;
-          if (hadUnordered && currentLineStyle === markerStyle) return leadingSpaces + content;
-          return `${leadingSpaces}${markerChar} ${content}`;
-        });
-      } else if (format === 'orderedList') {
-        let index = 1;
-        newLines = lines.map(line => {
-          const leadingSpacesMatch = line.match(/^(\s*)/);
-          const leadingSpaces = leadingSpacesMatch ? leadingSpacesMatch[1] : '';
-          const trimmed = line.slice(leadingSpaces.length);
-          if (!trimmed) return line;
-          const hadOrderedMatch = trimmed.match(/^(\d+[.)]\s+|[a-z]+[.)]\s+)/i);
-          const hadOrdered = !!hadOrderedMatch;
-          const content = stripListPrefix(trimmed);
-          // Se já é lista numerada com o MESMO estilo, desliga; se for estilo diferente, troca
-          if (hadOrdered) {
-            const prefix = hadOrderedMatch![1];
-            const isDecimal = /^\d+[.)]\s+/.test(prefix);
-            const currentStyle: 'decimal' | 'alpha' = isDecimal ? 'decimal' : 'alpha';
-            if (currentStyle === orderedStyle) return leadingSpaces + content;
+  const handleFormatChange = useCallback(
+    (format: string, value: any) => {
+      const applyToSelection = (fn: () => void | boolean, opts?: { requireNonCollapsed?: boolean }) => {
+        const ed = editorRef.current;
+        if (!ed || !onUpdate) return false;
+        ed.focus();
+        void ed.offsetWidth;
+        let restored = restoreRangeInRoot(savedSelectionRef.current, ed);
+        if (!restored) {
+          const selNow = window.getSelection();
+          if (
+            selNow?.rangeCount &&
+            ed.contains(selNow.getRangeAt(0).commonAncestorContainer)
+          ) {
+            restored = true;
           }
-          const prefix = orderedPrefix(index);
-          index += 1;
-          return `${leadingSpaces}${prefix}${content}`;
-        });
-      } else if (format === 'indent') {
-        // Adiciona recuo de dois espaços em cada linha
-        newLines = lines.map(line => `  ${line}`);
-      } else if (format === 'outdent') {
-        // Remove um nível de recuo (até 2 espaços ou um tab) de cada linha
-        newLines = lines.map(line => line.replace(/^(\t| {1,2})/, ''));
+        }
+        const selPre = window.getSelection();
+        if (selPre?.rangeCount) {
+          try {
+            const r0 = selPre.getRangeAt(0);
+            if (!ed.contains(r0.commonAncestorContainer)) {
+              ensureSelectionInsideEditor(ed);
+            }
+          } catch {
+            ensureSelectionInsideEditor(ed);
+          }
+        } else {
+          ensureSelectionInsideEditor(ed);
+        }
+        const sel = window.getSelection();
+        if (opts?.requireNonCollapsed) {
+          if (!sel || sel.rangeCount === 0) return false;
+          const r = sel.getRangeAt(0);
+          if (r.collapsed) return false;
+          if (!ed.contains(r.commonAncestorContainer)) return false;
+        }
+        const applied = fn();
+        if (applied === false) return false;
+        saveContentFromEditor();
+        queueMicrotask(() => refreshToolbarFormatsFromSelection());
+        return true;
+      };
+
+      const orderedStyle: OrderedListStyle =
+        value === 'alpha' || value === 'decimal' ? value : 'decimal';
+
+      if (format === 'unorderedList' || format === 'orderedList' || format === 'indent' || format === 'outdent') {
+        if (!applyToSelection(() => {
+          const root = editorRef.current;
+          if (!root) return;
+          if (format === 'unorderedList') {
+            const marker = isUnorderedListMarkerValue(value) ? value : 'bullet';
+            applyUnorderedListMarkerAtSelection(root, marker);
+          } else if (format === 'orderedList') {
+            applyOrderedListStyleAtSelection(root, orderedStyle);
+          } else if (format === 'indent') {
+            document.execCommand('indent', false);
+          } else {
+            document.execCommand('outdent', false);
+          }
+        })) {
+          return;
+        }
+        return;
       }
 
-      const newBlock = newLines.join('\n');
-      const newFullText = fullText.slice(0, lineStart) + newBlock + fullText.slice(lineEnd);
-
-      onUpdate({
-        content: {
-          ...content,
-          html: newFullText,
-        },
-      });
-
-      // Tentar manter a seleção cobrindo o mesmo bloco de linhas
-      const lengthDiff = newBlock.length - selectedBlock.length;
-      const newStart = start;
-      const newEnd = end + lengthDiff;
-
-      setTimeout(() => {
-        if (!textareaRef.current) return;
-        textareaRef.current.focus();
-        textareaRef.current.setSelectionRange(newStart, newEnd);
-      }, 0);
-
-      const hasUnordered = newLines.some(l => /^\s*[-*•◦▪]\s+/.test(l));
-      const hasOrdered = newLines.some(l => hadOrderedRegex.test(l.replace(/^\s*/, '')));
-      const detectOrderedStyleFromLines = (): 'decimal' | 'alpha' | undefined => {
-        const first = newLines.find(l => hadOrderedRegex.test(l.replace(/^\s*/, '')));
-        if (!first) return undefined;
-        const t = first.replace(/^\s*/, '');
-        if (/^\d+[.)]\s+/.test(t)) return 'decimal';
-        if (/^[a-z]+[.)]\s+/.test(t)) return 'alpha';
-        return 'decimal';
-      };
-      const nextFormats = {
-        ...formats,
-        listMarkerStyle: format === 'unorderedList' && hasUnordered ? markerStyle : undefined,
-        orderedListActive: hasOrdered,
-        orderedListStyle: hasOrdered ? (format === 'orderedList' ? orderedStyle : detectOrderedStyleFromLines()) : undefined,
-      };
-      if (format === 'unorderedList' && !hasUnordered) nextFormats.listMarkerStyle = undefined;
-      if (format === 'orderedList' && !hasOrdered) nextFormats.orderedListActive = false;
-      setFormats(prev => ({ ...prev, ...nextFormats }));
-      globalFormattingToolbar?.show({
-        isVisible: true,
-        onFormatChange: handleFormatChange,
-        onClose: () => globalFormattingToolbar.hide(),
-        currentFormats: nextFormats,
-      });
-      return;
-    }
-
-    const newFormats = {
-      ...formats,
-      [format]: value
-    };
-    setFormats(newFormats);
-    
-    // Se houver texto selecionado, aplicar apenas na seleção (modo HTML ou texto simples)
-    if (textareaRef.current) {
-      const start = textareaRef.current.selectionStart ?? 0;
-      const end = textareaRef.current.selectionEnd ?? 0;
-      const hasSelection = end > start;
-
-      if (hasSelection && (format === 'fontSize' || format === 'color' || format === 'backgroundColor')) {
-        // Se estiver em modo HTML, usar wrapSelectionWithStyle
-        if (isRichEditMode && allowHtml) {
-          const styleObj: Record<string, string> = {};
-          if (format === 'fontSize') styleObj['font-size'] = `${value}px`;
-          if (format === 'color') styleObj['color'] = value;
-          if (format === 'backgroundColor') styleObj['background-color'] = value;
-          const applied = wrapSelectionWithStyle(styleObj);
-          if (applied) return; // já aplicado na seleção
-        }
-        // Se estiver em modo texto simples, converter para HTML e aplicar
-        else if (!isRichEditMode) {
-          // Ativar modo HTML temporariamente e aplicar estilo
-          const textarea = textareaRef.current;
-          const selectedText = textarea.value.substring(start, end);
-          const styleObj: Record<string, string> = {};
-          if (format === 'fontSize') styleObj['font-size'] = `${value}px`;
-          if (format === 'color') styleObj['color'] = value;
-          if (format === 'backgroundColor') styleObj['background-color'] = value;
-          
-          const styleString = Object.entries(styleObj)
-            .filter(([_, v]) => v !== undefined && v !== '')
-            .map(([k, v]) => `${k}: ${v}`)
-            .join('; ');
-          
-          const spanOpen = `<span style="${styleString}">`;
-          const spanClose = `</span>`;
-          const currentHtml = html || textarea.value;
-          const newHtml = currentHtml.substring(0, start) + spanOpen + selectedText + spanClose + currentHtml.substring(end);
-          
-          if (onUpdate) {
-            onUpdate({
-              content: {
-                ...content,
-                html: newHtml,
-                allowHtml: true, // Ativar HTML para manter formatação
-              },
-            });
-            // Ativar modo HTML para mostrar a formatação
-            setIsRichEditMode(true);
-          }
-          
-          setTimeout(() => {
-            if (textareaRef.current) {
-              textareaRef.current.focus();
-              textareaRef.current.setSelectionRange(start + spanOpen.length, start + spanOpen.length + selectedText.length);
+      if (format === 'bold') {
+        if (applyToSelection(() => ensureCommandState('bold', !!value))) return;
+      }
+      if (format === 'italic') {
+        if (applyToSelection(() => ensureCommandState('italic', !!value))) return;
+      }
+      if (format === 'underline') {
+        if (
+          applyToSelection(() => {
+            const ed = editorRef.current;
+            if (!ed) return;
+            if (!value) {
+              removeUnderlineFromSelection(ed);
             }
-          }, 0);
+            ensureCommandState('underline', !!value);
+          })
+        ) {
           return;
         }
       }
-    }
 
-    // Persistir como estilo do bloco (aplica ao texto inteiro)
-    if (onUpdate) {
-      const updatedStyle: any = {
-        ...style,
-        typography: {
-          ...style?.typography,
-        },
-        colors: {
-          ...style?.colors,
+      if (format === 'align' && value) {
+        if (
+          applyToSelection(() => {
+            const map: Record<string, string> = {
+              left: 'justifyLeft',
+              center: 'justifyCenter',
+              right: 'justifyRight',
+              justify: 'justifyFull',
+            };
+            const cmd = map[value as string];
+            if (cmd) document.execCommand(cmd, false);
+          })
+        ) {
+          return;
         }
-      };
-
-      if (format === 'fontSize') {
-        updatedStyle.typography.fontSize = value;
-      } else if (format === 'align') {
-        updatedStyle.typography.textAlign = value;
-      } else if (format === 'color') {
-        updatedStyle.typography.color = value;
-        updatedStyle.colors.text = value;
-      } else if (format === 'backgroundColor') {
-        updatedStyle.colors.background = value;
-      } else if (format === 'bold') {
-        updatedStyle.typography.fontWeight = value ? 'bold' : 'normal';
-      } else if (format === 'italic') {
-        updatedStyle.typography.fontStyle = value ? 'italic' : 'normal';
-      } else if (format === 'underline') {
-        updatedStyle.typography.textDecoration = value ? 'underline' : 'none';
       }
 
-      onUpdate({ style: updatedStyle });
-    }
-  };
-
-  const getStyleFromFormats = (formats: TextFormats): React.CSSProperties => {
-    const style: React.CSSProperties = {};
-
-    if (formats.bold) style.fontWeight = 'bold';
-    if (formats.italic) style.fontStyle = 'italic';
-    if (formats.underline) style.textDecoration = 'underline';
-    if (formats.fontSize) style.fontSize = `${formats.fontSize}px`;
-    if (formats.color) style.color = formats.color;
-    if (formats.backgroundColor) style.backgroundColor = formats.backgroundColor;
-    if (formats.align) {
-      switch (formats.align) {
-        case 'left':
-          style.textAlign = 'left';
-          break;
-        case 'center':
-          style.textAlign = 'center';
-          break;
-        case 'right':
-          style.textAlign = 'right';
-          break;
-        case 'justify':
-          style.textAlign = 'justify';
-          break;
+      if (format === 'fontSize' && value != null) {
+        const px = typeof value === 'number' ? value : parseInt(String(value), 10);
+        if (
+          !Number.isNaN(px) &&
+          applyToSelection(
+            () => {
+              const ed = editorRef.current;
+              if (!ed) return false;
+              return applyFontSizePxToRange(ed, px);
+            },
+            { requireNonCollapsed: true }
+          )
+        ) {
+          return;
+        }
       }
-    }
 
-    return style;
-  };
+      if (format === 'color' && typeof value === 'string') {
+        if (
+          applyToSelection(
+            () => {
+              try {
+                document.execCommand('foreColor', false, value);
+              } catch {
+                wrapCurrentRangeWithSpanStyle({ color: value });
+              }
+            },
+            { requireNonCollapsed: true }
+          )
+        ) {
+          return;
+        }
+      }
 
-  const handleHtmlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (onUpdate) {
-      const sanitizedHtml = ValidationUtils.sanitizeHtml(e.target.value, allowLinks);
-      onUpdate({
-        content: {
-          ...content,
-          html: sanitizedHtml,
-        },
-      });
-    }
-  };
+      if (format === 'backgroundColor' && typeof value === 'string') {
+        if (
+          applyToSelection(
+            () => {
+              try {
+                document.execCommand('hiliteColor', false, value);
+              } catch {
+                try {
+                  document.execCommand('backColor', false, value);
+                } catch {
+                  wrapCurrentRangeWithSpanStyle({ backgroundColor: value });
+                }
+              }
+            },
+            { requireNonCollapsed: true }
+          )
+        ) {
+          return;
+        }
+      }
 
-  // Envolve seleção com <span style="..."> para aplicar estilos parciais no modo HTML
-  const wrapSelectionWithStyle = (styleObj: Record<string, string>) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return false;
+      const newFormats = ({
+        ...formats,
+        [format]: value,
+      }) as TextFormats;
+      setFormats(newFormats);
 
-    const start = textarea.selectionStart ?? 0;
-    const end = textarea.selectionEnd ?? 0;
-    if (end <= start) return false; // sem seleção
+      if (onUpdate) {
+        const updatedStyle: any = {
+          ...style,
+          typography: {
+            ...style?.typography,
+            textAlign: style?.typography?.textAlign || formats.align || 'left',
+          },
+          colors: {
+            ...style?.colors,
+          },
+        };
 
-    const selected = html.substring(start, end);
-    const styleString = Object.entries(styleObj)
-      .filter(([_, v]) => v !== undefined && v !== '')
-      .map(([k, v]) => `${k}: ${v}`)
-      .join('; ');
+        if (format === 'align') {
+          updatedStyle.typography.textAlign = value;
+        }
 
-    const spanOpen = `<span style="${styleString}">`;
-    const spanClose = `</span>`;
-    const newHtml = html.substring(0, start) + spanOpen + selected + spanClose + html.substring(end);
+        onUpdate({ style: updatedStyle });
+      }
 
-    if (onUpdate) {
-      onUpdate({
-        content: {
-          ...content,
-          html: newHtml,
-        },
-      });
-    }
-
-    // restaurar seleção dentro do novo span
-    setTimeout(() => {
-      if (!textareaRef.current) return;
-      textareaRef.current.focus();
-      textareaRef.current.setSelectionRange(start + spanOpen.length, start + spanOpen.length + selected.length);
-    }, 0);
-
-    return true;
-  };
-
-  // Heurística simples: extrai estilos do <span style="..."> imediatamente anterior ao caret/seleção
-  const extractFormatsFromSelection = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const caret = textarea.selectionStart ?? 0;
-    const before = html.lastIndexOf('<span', caret);
-    const afterOpen = before >= 0 ? html.indexOf('>', before) : -1;
-    const afterClose = caret >= 0 ? html.indexOf('</span>', caret) : -1;
-    if (before >= 0 && afterOpen > before && (afterClose === -1 || afterClose > caret)) {
-      const openTag = html.substring(before, afterOpen + 1);
-      const styleMatch = openTag.match(/style\s*=\s*"([^"]*)"/i);
-      if (styleMatch && styleMatch[1]) {
-        const stylePairs = styleMatch[1].split(';').map(s => s.trim()).filter(Boolean);
-        const styleMap: Record<string, string> = {};
-        stylePairs.forEach(pair => {
-          const [k, v] = pair.split(':').map(s => s.trim());
-          if (k && v) styleMap[k.toLowerCase()] = v;
+      if (globalFormattingToolbar) {
+        globalFormattingToolbar.show({
+          isVisible: true,
+          onFormatChange: (f, v) => handleFormatChangeRef.current(f, v),
+          onClose: () => globalFormattingToolbar.hide(),
+          currentFormats: newFormats,
         });
-        const nextFormats: Partial<TextFormats> = {};
-        if (styleMap['color']) nextFormats.color = styleMap['color'];
-        if (styleMap['background-color']) nextFormats.backgroundColor = styleMap['background-color'];
-        if (styleMap['font-size']) {
-          const num = parseInt(styleMap['font-size']);
-          if (!isNaN(num)) nextFormats.fontSize = num;
-        }
-        setFormats(prev => ({ ...prev, ...nextFormats }));
       }
-    }
+    },
+    [formats, globalFormattingToolbar, onUpdate, saveContentFromEditor, refreshToolbarFormatsFromSelection, style]
+  );
+
+  useEffect(() => {
+    handleFormatChangeRef.current = handleFormatChange;
+  }, [handleFormatChange]);
+
+  // Para o contentEditable, NÃO aplicar color/fontSize/backgroundColor/alinhamento vindos de `formats`
+  // (estado da toolbar/seleção): isso herdaria no texto inteiro e sobrescreveria o HTML parcial.
+  // Só defaults do bloco (`style`) no wrapper; formatação parcial fica só no HTML.
+  const blockDefaultEditorStyle: React.CSSProperties = {
+    fontSize: style?.typography?.fontSize
+      ? `${typeof style.typography.fontSize === 'number' ? style.typography.fontSize : parseInt(String(style.typography.fontSize).replace('px', ''), 10)}px`
+      : undefined,
+    fontWeight: style?.typography?.fontWeight,
+    fontFamily: style?.typography?.fontFamily,
+    lineHeight: style?.typography?.lineHeight,
+    color: style?.typography?.color || style?.colors?.text,
+    backgroundColor: style?.colors?.background,
+    textAlign: style?.typography?.textAlign as React.CSSProperties['textAlign'],
+    margin: 0,
+    padding: 0,
   };
 
-  const toggleFormat = (tag: string) => {
-    if (!onUpdate) return;
-
-    const textarea = document.getElementById(`text-edit-${block.props.id}`) as HTMLTextAreaElement;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end);
-
-    let newHtml = html;
-    if (selectedText) {
-      const formattedText = `<${tag}>${selectedText}</${tag}>`;
-      newHtml = html.substring(0, start) + formattedText + html.substring(end);
-    } else {
-      newHtml = html + `<${tag}></${tag}>`;
-    }
-
-    onUpdate({
-      content: {
-        ...content,
-        html: newHtml,
-      },
-    });
-
-    // Restaurar foco e seleção
-    setTimeout(() => {
-      textarea.focus();
-      if (selectedText) {
-        textarea.setSelectionRange(start + `<${tag}>`.length, start + `<${tag}>`.length + selectedText.length);
-      } else {
-        textarea.setSelectionRange(start + `<${tag}>`.length, start + `</${tag}>`.length);
-      }
-    }, 0);
+  const editorBaseStyle: React.CSSProperties = {
+    ...blockDefaultEditorStyle,
   };
+  delete editorBaseStyle.fontWeight;
+  delete editorBaseStyle.fontStyle;
+  delete (editorBaseStyle as { textDecoration?: string }).textDecoration;
 
-  // Usar useEffect para sincronizar formatos quando o estilo do bloco mudar
   React.useEffect(() => {
     const newFormats: TextFormats = {};
     if (style?.typography?.fontSize) {
@@ -539,139 +413,94 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
     if (style?.typography?.textAlign) {
       newFormats.align = style.typography.textAlign as 'left' | 'center' | 'right' | 'justify';
     }
-    setFormats(prev => ({ ...prev, ...newFormats }));
+    setFormats((prev) => ({ ...prev, ...newFormats }) as TextFormats);
   }, [style?.typography?.fontSize, style?.typography?.color, style?.colors?.text, style?.colors?.background, style?.typography?.textAlign]);
 
-  const textStyle: React.CSSProperties = {
-    fontSize: formats.fontSize ? `${formats.fontSize}px` : (style?.typography?.fontSize ? `${style.typography.fontSize}px` : undefined),
-    fontWeight: style?.typography?.fontWeight,
-    fontFamily: style?.typography?.fontFamily,
-    lineHeight: style?.typography?.lineHeight,
-    color: formats.color || style?.typography?.color || style?.colors?.text,
-    backgroundColor: formats.backgroundColor || style?.colors?.background,
-    textAlign: formats.align || style?.typography?.textAlign || 'left',
-    margin: 0,
-    padding: 0,
+  const previewWrapperStyle: React.CSSProperties = {
+    ...blockDefaultEditorStyle,
   };
 
   if (isEditing) {
+    const currentText = normalizePlainText(html);
+    const showPlaceholderOverlay = isHtmlStoredEmpty(html) && !editorFocused;
+
     return (
       <div
-        className={`relative group ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
+        className={`relative group ${isSelected ? 'ring-2 ring-indigo-500' : ''}`}
         onClick={onSelect}
       >
-        {/* Controles de edição */}
-        {isSelected && (
+        {isSelected && maxChars && (
           <div className="absolute -top-12 left-0 flex items-center space-x-2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10">
-            {/* Controles de formatação */}
-            {allowHtml && (
-              <>
-                <div className="h-4 w-px bg-gray-300" />
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFormat('strong');
-                  }}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"
-                  title="Negrito"
-                >
-                  <strong>B</strong>
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFormat('em');
-                  }}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"
-                  title="Itálico"
-                >
-                  <em>I</em>
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFormat('u');
-                  }}
-                  className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100"
-                  title="Sublinhado"
-                >
-                  <u>S</u>
-                </button>
-              </>
-            )}
-
-            <div className="h-4 w-px bg-gray-300" />
-
-            {/* Contador de caracteres */}
-            {maxChars && (
-              <span className="text-xs text-gray-500">
-                {html.length}/{maxChars}
-              </span>
-            )}
+            <span className="text-xs text-gray-500">
+              {currentText.length}/{maxChars}
+            </span>
           </div>
         )}
 
-        {/* Área de edição - sempre exibe texto sem tags HTML */}
-        <div className="relative">
-          <textarea
+        <div className="relative min-h-[1.5em]">
+          {showPlaceholderOverlay && (
+            <span
+              className="pointer-events-none absolute inset-0 z-[2] flex items-start whitespace-pre-wrap text-gray-400 select-none"
+              aria-hidden
+            >
+              {TEXT_BLOCK_PLACEHOLDER}
+            </span>
+          )}
+          <div
+            ref={editorRef}
             id={`text-edit-${block.props.id}`}
-            ref={textareaRef}
-            value={typeof html === 'string' ? html.replace(/<[^>]*>/g, '') : ''}
-            onChange={handleTextChange}
-            onKeyDown={handleTextAreaKeyDown}
+            contentEditable
+            suppressContentEditableWarning
+            role="textbox"
+            aria-multiline="true"
+            aria-label="Editar texto"
+            aria-placeholder={isHtmlStoredEmpty(html) ? TEXT_BLOCK_PLACEHOLDER : undefined}
+            className="builder-rich-html relative z-[1] min-h-[1.5em] w-full bg-transparent border-none outline-none whitespace-pre-wrap"
+            style={editorBaseStyle}
+            onInput={() => {
+              saveContentFromEditor();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                handleFormatChange(e.shiftKey ? 'outdent' : 'indent', undefined);
+              }
+            }}
+            onMouseUp={() => {
+              const ed = editorRef.current;
+              const sel = window.getSelection();
+              if (
+                ed &&
+                sel?.rangeCount &&
+                ed.contains(sel.getRangeAt(0).commonAncestorContainer)
+              ) {
+                try {
+                  savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+                } catch {
+                  savedSelectionRef.current = null;
+                }
+              }
+              refreshToolbarFormatsFromSelection();
+            }}
+            onKeyUp={() => refreshToolbarFormatsFromSelection()}
             onFocus={() => {
-              if (!globalFormattingToolbar) return;
-              // Detectar marcador/lista da linha atual para mostrar botão ativo na toolbar
-              const detectListState = () => {
-                const ta = textareaRef.current;
-                if (!ta) return formats;
-                const v = ta.value ?? '';
-                const pos = ta.selectionStart ?? 0;
-                const lineStart = v.lastIndexOf('\n', pos - 1) + 1;
-                const lineEnd = v.indexOf('\n', pos);
-                const lineEndVal = lineEnd === -1 ? v.length : lineEnd;
-                const line = v.slice(lineStart, lineEndVal);
-                const afterSpaces = line.replace(/^\s*/, '');
-                const unordMatch = afterSpaces.match(/^([-*•◦▪])\s+/);
-                const ordDecimal = afterSpaces.match(/^(\d+)[.)]\s+/);
-                const ordAlpha = afterSpaces.match(/^([a-z]+)[.)]\s+/);
-                const listMarkerStyleMap: Record<string, 'dash' | 'bullet' | 'circle' | 'square' | 'asterisk'> = {
-                  '-': 'dash', '•': 'bullet', '◦': 'circle', '▪': 'square', '*': 'asterisk',
-                };
-                if (unordMatch) {
-                  return { ...formats, listMarkerStyle: listMarkerStyleMap[unordMatch[1]] ?? 'dash', orderedListActive: false, orderedListStyle: undefined };
-                }
-                if (ordDecimal) {
-                  return { ...formats, listMarkerStyle: undefined, orderedListActive: true, orderedListStyle: 'decimal' as const };
-                }
-                if (ordAlpha) {
-                  return { ...formats, listMarkerStyle: undefined, orderedListActive: true, orderedListStyle: 'alpha' as const };
-                }
-                return { ...formats, listMarkerStyle: undefined, orderedListActive: false, orderedListStyle: undefined };
-              };
-              const currentFormatsToShow = detectListState();
-              setFormats(prev => ({ ...prev, ...currentFormatsToShow }));
-              globalFormattingToolbar.show({
-                isVisible: true,
-                onFormatChange: handleFormatChange,
-                onClose: () => globalFormattingToolbar.hide(),
-                currentFormats: currentFormatsToShow,
-              });
+              setEditorFocused(true);
+              if (globalFormattingToolbar) {
+                globalFormattingToolbar.show({
+                  isVisible: true,
+                  onFormatChange: (f, v) => handleFormatChangeRef.current(f, v),
+                  onClose: () => globalFormattingToolbar.hide(),
+                  currentFormats: formats,
+                });
+              }
+              queueMicrotask(() => refreshToolbarFormatsFromSelection());
             }}
             onBlur={() => {
+              saveContentFromEditor({ flush: true });
+              setEditorFocused(false);
               if (globalFormattingToolbar) {
                 globalFormattingToolbar.hide();
               }
-            }}
-            placeholder="Digite seu texto..."
-            className="w-full bg-transparent border-none outline-none resize-none overflow-hidden"
-            style={{...textStyle, ...getStyleFromFormats(formats)}}
-            maxLength={maxChars}
-            onClick={(e) => e.stopPropagation()}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              target.style.height = 'auto';
-              target.style.height = `${target.scrollHeight}px`;
             }}
           />
         </div>
@@ -679,26 +508,28 @@ const TextBlock: React.FC<TextBlockComponentProps> = ({
     );
   }
 
-  // Renderização em modo visualização
-  if (allowHtml) {
-    return (
-      <div
-        className={isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}
-        style={{...textStyle, ...getStyleFromFormats(formats)}}
-        onClick={onSelect}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    );
-  }
+  const rawHtml = typeof html === 'string' ? html : '';
+  const safeHtml = ValidationUtils.sanitizeHtml(rawHtml, allowLinks);
+  const plainVisible = ValidationUtils.stripHtmlTags(rawHtml).trim();
+  const hasMediaWithoutPlainText =
+    plainVisible === '' && /<(img|video|audio|iframe|svg)\b/i.test(safeHtml);
+  const showPlaceholder = plainVisible === '' && !hasMediaWithoutPlainText;
 
   return (
-    <p
-      className={isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}
-      style={{...textStyle, ...getStyleFromFormats(formats)}}
+    <div
+      className={`builder-rich-html ${isSelected ? 'ring-2 ring-indigo-500' : ''} whitespace-pre-wrap`}
+      style={previewWrapperStyle}
       onClick={onSelect}
     >
-      {html}
-    </p>
+      {!showPlaceholder ? (
+        <div
+          className="m-0 p-0 whitespace-pre-wrap"
+          dangerouslySetInnerHTML={{ __html: safeHtml }}
+        />
+      ) : (
+        <p className="m-0 p-0 text-gray-400">{TEXT_BLOCK_PLACEHOLDER}</p>
+      )}
+    </div>
   );
 };
 

@@ -1,5 +1,8 @@
 import { ValidationRule, BlockProps, Page } from '@/types/builder';
 
+/** Limite de caracteres do texto de cada ponto de interação no bloco imagem */
+export const IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS = 1000;
+
 export class ValidationError {
   constructor(
     public field: string,
@@ -120,30 +123,62 @@ export class PageValidator {
     const errors: ValidationError[] = [];
 
     switch (props.type) {
-      case 'heading':
-        if (!props.content.text || props.content.text.trim() === '') {
+      case 'heading': {
+        const headingPlain = ValidationUtils.stripHtmlTags(props.content.text || '').trim();
+        if (!headingPlain) {
           errors.push(new ValidationError('content.text', 'Texto do título é obrigatório'));
         }
-        if (props.content.maxChars && props.content.text && props.content.text.length > props.content.maxChars) {
+        if (props.content.maxChars && headingPlain.length > props.content.maxChars) {
           errors.push(new ValidationError('content.text', `Título excede limite de ${props.content.maxChars} caracteres`));
         }
         break;
+      }
 
-      case 'text':
-        if (!props.content.html || props.content.html.trim() === '') {
+      case 'text': {
+        const htmlRaw = props.content.html || '';
+        const textPlain = ValidationUtils.stripHtmlTags(htmlRaw).trim();
+        if (!textPlain) {
           errors.push(new ValidationError('content.html', 'Conteúdo de texto é obrigatório'));
         }
-        if (props.content.maxChars && props.content.html && props.content.html.length > props.content.maxChars) {
+        if (props.content.maxChars && textPlain.length > props.content.maxChars) {
           errors.push(new ValidationError('content.html', `Texto excede limite de ${props.content.maxChars} caracteres`));
         }
         break;
+      }
 
       case 'image':
-        if (!props.content.src || props.content.src.trim() === '') {
-          errors.push(new ValidationError('content.src', 'URL da imagem é obrigatória'));
-        }
         if (!props.content.alt || props.content.alt.trim() === '') {
           errors.push(new ValidationError('content.alt', 'Texto alternativo é obrigatório para acessibilidade'));
+        }
+        if (props.content.interactionEnabled && Array.isArray(props.content.interactionPoints)) {
+          props.content.interactionPoints.forEach((point: { text?: string } | undefined, index: number) => {
+            const raw = String(point?.text ?? '');
+            const t = raw.trim();
+            if (!t) {
+              errors.push(
+                new ValidationError(
+                  `content.interactionPoints[${index}].text`,
+                  'Texto do ponto de interação é obrigatório'
+                )
+              );
+            } else if (raw.length > IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS) {
+              errors.push(
+                new ValidationError(
+                  `content.interactionPoints[${index}].text`,
+                  `Texto do ponto de interação deve ter no máximo ${IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS} caracteres`
+                )
+              );
+            }
+          });
+        }
+        break;
+
+      case 'badge':
+        if (!props.content.src || props.content.src.trim() === '') {
+          errors.push(new ValidationError('content.src', 'Imagem do selo é obrigatória'));
+        }
+        if (!props.content.alt || props.content.alt.trim() === '') {
+          errors.push(new ValidationError('content.alt', 'Texto alternativo do selo é obrigatório'));
         }
         break;
 
@@ -156,6 +191,15 @@ export class PageValidator {
         }
         if (!props.content.description || props.content.description.trim() === '') {
           errors.push(new ValidationError('content.description', 'Descrição do vídeo é obrigatória para acessibilidade'));
+        }
+        break;
+
+      case 'audio':
+        if (!props.content.src || props.content.src.trim() === '') {
+          errors.push(new ValidationError('content.src', 'URL do áudio é obrigatória'));
+        }
+        if (!props.content.title || props.content.title.trim() === '') {
+          errors.push(new ValidationError('content.title', 'Título do áudio é obrigatório'));
         }
         break;
 
@@ -185,10 +229,8 @@ export class PageValidator {
         break;
 
       case 'quiz-true-false':
-        if (!props.content.text || props.content.text.trim() === '') {
-          errors.push(new ValidationError('content.text', 'Texto da questão é obrigatório'));
-        }
-        if (!props.content.question || props.content.question.trim() === '') {
+        // Apenas content.question: o bloco e o painel usam "Pergunta" (não content.text)
+        if (!props.content.question || String(props.content.question).trim() === '') {
           errors.push(new ValidationError('content.question', 'Pergunta é obrigatória'));
         }
         if (props.content.correctAnswer === undefined || props.content.correctAnswer === null) {
@@ -214,21 +256,156 @@ export class PageValidator {
         }
         break;
 
-      case 'carousel':
+      case 'carousel': {
+        const items = Array.isArray(props.content.items) && props.content.items.length > 0
+          ? props.content.items
+          : [
+              { title: '', text: '' },
+            ];
+
         if (!props.content.items || props.content.items.length === 0) {
           errors.push(new ValidationError('content.items', 'Carrossel deve ter pelo menos um item'));
         }
-        break;
 
-      case 'tabs':
+        items.forEach((item: any, index: number) => {
+          const titlePlain = ValidationUtils.stripHtmlTags(String(item?.title ?? '')).trim();
+          if (!item?.title || titlePlain === '') {
+            errors.push(
+              new ValidationError(
+                `content.items[${index}].title`,
+                `Título do slide ${index + 1} é obrigatório`
+              )
+            );
+          }
+          const textPlain = ValidationUtils.stripHtmlTags(String(item?.text ?? '')).trim();
+          if (!item?.text || textPlain === '') {
+            errors.push(
+              new ValidationError(
+                `content.items[${index}].text`,
+                `Texto do slide ${index + 1} é obrigatório`
+              )
+            );
+          }
+        });
+        break;
+      }
+
+      case 'tabs': {
+        const tabs = Array.isArray(props.content.tabs) && props.content.tabs.length > 0
+          ? props.content.tabs
+          : [
+              { title: '', content: '' },
+              { title: '', content: '' },
+            ];
+
         if (!props.content.tabs || props.content.tabs.length < 2) {
           errors.push(new ValidationError('content.tabs', 'Tabs devem ter pelo menos 2 abas'));
         }
-        break;
 
-      case 'accordion':
+        tabs.forEach((tab: any, index: number) => {
+          const titlePlain = ValidationUtils.stripHtmlTags(String(tab?.title ?? '')).trim();
+          if (!tab?.title || titlePlain === '') {
+            errors.push(
+              new ValidationError(
+                `content.tabs[${index}].title`,
+                `Título da aba ${index + 1} é obrigatório`
+              )
+            );
+          }
+          const contentPlain = ValidationUtils.stripHtmlTags(String(tab?.content ?? '')).trim();
+          if (!tab?.content || contentPlain === '') {
+            errors.push(
+              new ValidationError(
+                `content.tabs[${index}].content`,
+                `Conteúdo da aba ${index + 1} é obrigatório`
+              )
+            );
+          }
+        });
+        break;
+      }
+
+      case 'accordion': {
+        const items = Array.isArray(props.content.items) && props.content.items.length > 0
+          ? props.content.items
+          : [
+              { title: '', content: '' },
+              { title: '', content: '' },
+            ];
+
         if (!props.content.items || props.content.items.length === 0) {
           errors.push(new ValidationError('content.items', 'Accordion deve ter pelo menos um item'));
+        }
+
+        items.forEach((item: any, index: number) => {
+          const titlePlain = ValidationUtils.stripHtmlTags(String(item?.title ?? '')).trim();
+          if (!item?.title || titlePlain === '') {
+            errors.push(
+              new ValidationError(
+                `content.items[${index}].title`,
+                `Título do item ${index + 1} é obrigatório`
+              )
+            );
+          }
+          const contentPlain = ValidationUtils.stripHtmlTags(String(item?.content ?? '')).trim();
+          if (!item?.content || contentPlain === '') {
+            errors.push(
+              new ValidationError(
+                `content.items[${index}].content`,
+                `Conteúdo do item ${index + 1} é obrigatório`
+              )
+            );
+          }
+          // Validação opcional de imagem por item: se campo image existir, src é obrigatório
+          if (item?.image) {
+            if (!item.image.src || String(item.image.src).trim() === '') {
+              errors.push(
+                new ValidationError(
+                  `content.items[${index}].image.src`,
+                  `Imagem do item ${index + 1} do accordion é obrigatória`
+                )
+              );
+            }
+          }
+        });
+        break;
+      }
+
+      case 'modal':
+        if (!props.content.modalData?.title || String(props.content.modalData.title).trim() === '') {
+          errors.push(
+            new ValidationError(
+              'content.modalData.title',
+              'Título do modal é obrigatório'
+            )
+          );
+        }
+        if (!props.content.modalData?.text || String(props.content.modalData.text).trim() === '') {
+          errors.push(
+            new ValidationError(
+              'content.modalData.text',
+              'Texto do modal é obrigatório'
+            )
+          );
+        }
+        if (!props.content.trigger?.content?.label || String(props.content.trigger.content.label).trim() === '') {
+          errors.push(
+            new ValidationError(
+              'content.trigger.content.label',
+              'Texto do botão do modal é obrigatório'
+            )
+          );
+        }
+        break;
+
+      case 'embed':
+        if (!props.content.iframe || String(props.content.iframe).trim() === '') {
+          errors.push(
+            new ValidationError(
+              'content.iframe',
+              'Código do iframe é obrigatório'
+            )
+          );
         }
         break;
 
@@ -377,6 +554,12 @@ export class TemplateValidator {
 
 // Utilitários de validação
 export class ValidationUtils {
+  /** Texto visível sem tags HTML (contagem de caracteres, campos obrigatórios) */
+  static stripHtmlTags(html: string): string {
+    if (!html || typeof html !== 'string') return '';
+    return html.replace(/<[^>]+>/g, '');
+  }
+
   static sanitizeHtml(html: string, allowLinks = true): string {
     // Remover tags perigosas
     const dangerousTags = ['script', 'iframe', 'object', 'embed', 'link', 'meta'];

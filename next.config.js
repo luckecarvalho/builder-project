@@ -11,8 +11,19 @@ const nextConfig = {
     },
   },
   images: {
-    domains: ['localhost'],
+    remotePatterns: [
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'localhost',
+        pathname: '/**',
+      },
+    ],
   },
 }
 
-module.exports = nextConfig 
+module.exports = nextConfig

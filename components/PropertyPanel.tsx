@@ -2,23 +2,121 @@
 
 import React, { useRef, useState } from 'react';
 import { BlockProps } from '@/types/builder';
-import { ValidationUtils } from '@/utils/validation';
+import { ValidationUtils, IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS } from '@/utils/validation';
 import { X, Type, Image, Play, MousePointer, Minus, Volume2, CreditCard, List, Table, Award, RotateCcw, Folder, ChevronDown, Box, Star, Square, CheckSquare, CheckCircle, ListOrdered, Edit3, Clipboard, ArrowRight, Grid3X3, Zap, Palette, Code, Plus } from 'lucide-react';
 
 interface PropertyPanelProps {
   block: BlockProps;
   isPreview?: boolean;
+  validationErrors?: { field: string; message: string; value?: any }[];
   onUpdate: (updates: Partial<BlockProps>) => void;
   onClose: () => void;
 }
 
-const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false, onUpdate, onClose }) => {
+const AccordionItemImageUpload: React.FC<{
+  itemIndex: number;
+  item: any;
+  items: any[];
+  updateContent: (field: string, value: any) => void;
+  validationErrors: { field: string; message: string; value?: any }[];
+}> = ({ itemIndex, item, items, updateContent, validationErrors }) => {
+  const [localError, setLocalError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const validation = ValidationUtils.validateImageFile(file);
+      if (!validation.isValid) {
+        setLocalError(validation.error || 'Erro ao validar imagem');
+        event.target.value = '';
+        return;
+      }
+      setLocalError(null);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const newItems = [...items];
+        newItems[itemIndex] = {
+          ...newItems[itemIndex],
+          image: {
+            ...(newItems[itemIndex].image || {}),
+            src: e.target?.result ?? '',
+          },
+        };
+        updateContent('items', newItems);
+      };
+      reader.readAsDataURL(file);
+    }
+    event.target.value = '';
+  };
+
+  const hasValidationError = validationErrors.some(
+    (err) => typeof err.field === 'string' && err.field === `content.items[${itemIndex}].image.src`
+  );
+
+  const effectiveError = localError || (hasValidationError ? 'Imagem do item é obrigatória' : null);
+
+  return (
+    <div className="space-y-2">
+      <input
+        type="file"
+        accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+        ref={fileInputRef}
+        onChange={handleChange}
+        className="hidden"
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className={`w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 transition-colors ${
+          effectiveError
+            ? 'bg-white text-red-700 border border-red-500 focus:ring-red-500 hover:bg-red-50'
+            : 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+        <span>Selecionar imagem do item</span>
+      </button>
+      {effectiveError && (
+        <p className="mt-1 text-xs text-red-600">{effectiveError}</p>
+      )}
+      {item.image?.src && (
+        <div>
+          <p className="text-xs text-gray-500 mb-1">Preview</p>
+          <div className="w-[120px] h-[80px] rounded-md overflow-hidden border border-gray-200 shadow-sm">
+            <img
+              src={item.image.src}
+              alt={item.image.alt || `Imagem do item ${itemIndex + 1}`}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false, validationErrors = [], onUpdate, onClose }) => {
   const { type, content, style, layout, accessibility } = block;
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [modalImageUploadError, setModalImageUploadError] = useState<string | null>(null);
   const [badgeUploadError, setBadgeUploadError] = useState<string | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const badgeFileInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [accordionSelectedItem, setAccordionSelectedItem] = useState<number>(0);
+  const [tabsSelectedIndex, setTabsSelectedIndex] = useState<number>(0);
+  const [carouselSelectedCard, setCarouselSelectedCard] = useState<number>(0);
+
+  const hasError = (fieldPath: string) => {
+    return validationErrors.some(err => err.field === fieldPath);
+  };
+
+  const getErrorMessage = (fieldPath: string) =>
+    validationErrors.find((err) => err.field === fieldPath)?.message;
 
   const getBlockIcon = () => {
     switch (type) {
@@ -44,6 +142,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       case 'quiz-enumeration': return <ListOrdered className="w-5 h-5" />;
       case 'quiz-essay': return <Edit3 className="w-5 h-5" />;
       case 'quiz-simulation': return <Clipboard className="w-5 h-5" />;
+      case 'embed': return <Code className="w-5 h-5" />;
       default: return <Type className="w-5 h-5" />;
     }
   };
@@ -72,6 +171,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       case 'quiz-enumeration': return 'Enumeração';
       case 'quiz-essay': return 'Dissertativo';
       case 'quiz-simulation': return 'Simulado';
+      case 'embed': return 'Embed';
       default: return 'Componente';
     }
   };
@@ -115,7 +215,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className={`block text-sm font-medium mb-1 ${
+          hasError('content.text') ? 'text-red-600' : 'text-gray-700'
+        }`}>
           Texto do Título*
         </label>
         <input
@@ -123,7 +225,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           value={content.text || ''}
           onChange={(e) => updateContent('text', e.target.value)}
           placeholder="Digite o título..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+            hasError('content.text')
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
           maxLength={content.maxChars || 100}
         />
         {content.maxChars && (
@@ -187,7 +293,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
   const renderTextProperties = () => (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className={`block text-sm font-medium mb-1 ${
+          hasError('content.html') ? 'text-red-600' : 'text-gray-700'
+        }`}>
           Conteúdo do Texto*
         </label>
         <textarea
@@ -195,7 +303,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           onChange={(e) => updateContent('html', e.target.value)}
           placeholder="Digite seu texto..."
           rows={6}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+            hasError('content.html')
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
           maxLength={content.maxChars || 1000}
         />
         {content.maxChars && (
@@ -268,7 +380,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
   const handleBadgeUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const validation = ValidationUtils.validateBadgeImageFile(file);
+      // Usar mesma validação do componente de imagem
+      const validation = ValidationUtils.validateImageFile(file);
       if (!validation.isValid) {
         setBadgeUploadError(validation.error || 'Erro ao validar imagem');
         event.target.value = '';
@@ -293,15 +406,29 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         <input
           type="file"
           accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+          ref={badgeFileInputRef}
           onChange={handleBadgeUpload}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${
-            badgeUploadError
-              ? 'border-red-500 focus:ring-red-500'
-              : 'border-gray-300 focus:ring-indigo-500'
-          }`}
+          className="hidden"
         />
+        <button
+          type="button"
+          onClick={() => badgeFileInputRef.current?.click()}
+          className={`w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 transition-colors ${
+            ((!content.src && validationErrors.length > 0) || hasError('content.src') || badgeUploadError)
+              ? 'bg-white text-red-700 border border-red-500 focus:ring-red-500 hover:bg-red-50'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          <span>Selecionar imagem do selo</span>
+        </button>
         {badgeUploadError && (
           <p className="mt-1 text-xs text-red-600">{badgeUploadError}</p>
+        )}
+        {!content.src && validationErrors.length > 0 && !badgeUploadError && (
+          <p className="mt-1 text-xs text-red-600">Imagem do selo é obrigatória</p>
         )}
         <p className="mt-1 text-xs text-gray-500">
           Selo exibido em 70×70px, formato circular. Formatos: .jpg, .jpeg, .png, .gif, .webp
@@ -334,80 +461,289 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
     </div>
   );
 
-  const renderImageProperties = () => (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Upload de Imagem*
-        </label>
-        <input
-          type="file"
-          accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-          onChange={handleImageBlockUpload}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 text-sm ${
-            imageUploadError 
-              ? 'border-red-500 focus:ring-red-500' 
-              : 'border-gray-300 focus:ring-indigo-500'
-          }`}
-        />
-        {imageUploadError && (
-          <p className="mt-1 text-xs text-red-600">{imageUploadError}</p>
-        )}
-        <p className="mt-1 text-xs text-gray-500">
-          Formatos: .jpg, .jpeg, .png, .gif, .webp | Tamanho máx.: 500 KB / 1024 KB (GIF)
-        </p>
-      </div>
+  const renderImageProperties = () => {
+    const points = content.interactionPoints || [];
+    const activePointId = content.interactionActivePointId;
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Texto Alternativo*
-        </label>
-        <textarea
-          value={content.alt || ''}
-          onChange={(e) => updateContent('alt', e.target.value)}
-          placeholder="Descrição da imagem para acessibilidade..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          rows={3}
-          required
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Importante para acessibilidade e SEO
-        </p>
-      </div>
+    const addInteractionPoint = () => {
+      if (points.length >= 10) return;
+      const newPoints = [
+        ...points,
+        {
+          id: `point-${Date.now()}-${points.length + 1}`,
+          x: 50,
+          y: 50,
+          text: '',
+        },
+      ];
+      // Atualizar pontos e habilitar interação em uma única atualização
+      onUpdate({
+        content: {
+          ...content,
+          interactionPoints: newPoints,
+          interactionEnabled: true,
+        },
+      });
+    };
 
-      <div className="flex items-center space-x-4">
+    const updatePointText = (index: number, text: string) => {
+      const newPoints = [...points];
+      newPoints[index] = {
+        ...newPoints[index],
+        text: text.slice(0, IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS),
+      };
+      updateContent('interactionPoints', newPoints);
+    };
+
+    const removePoint = (index: number) => {
+      const newPoints = points.filter((_p: any, i: number) => i !== index);
+
+      let nextActiveId = activePointId;
+      const removedPoint = points[index];
+      if (removedPoint && removedPoint.id === activePointId) {
+        nextActiveId = newPoints[0]?.id;
+      }
+
+      onUpdate({
+        content: {
+          ...content,
+          interactionPoints: newPoints,
+          interactionActivePointId: nextActiveId,
+        },
+      });
+    };
+
+    return (
+      <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Largura (px)
+            Upload de Imagem*
           </label>
           <input
-            type="number"
-            value={content.width || ''}
-            onChange={(e) => updateContent('width', e.target.value ? parseInt(e.target.value) : undefined)}
-            placeholder="Auto"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+            ref={imageFileInputRef}
+            onChange={handleImageBlockUpload}
+            className="hidden"
           />
+          <button
+            onClick={() => imageFileInputRef.current?.click()}
+            className={`w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 transition-colors ${
+              hasError('content.src') || imageUploadError
+                ? 'bg-white text-red-700 border border-red-500 focus:ring-red-500 hover:bg-red-50'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <span>Selecionar Imagem</span>
+          </button>
+          {imageUploadError && (
+            <p className="mt-1 text-xs text-red-600">{imageUploadError}</p>
+          )}
+          <p className="mt-1 text-xs text-gray-500">
+            Formatos: .jpg, .jpeg, .png, .gif, .webp | Tamanho máx.: 500 KB / 1024 KB (GIF)
+          </p>
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Altura (px)
+          <label className={`block text-sm font-medium mb-1 ${
+            hasError('content.alt') ? 'text-red-600' : 'text-gray-700'
+          }`}>
+            Texto Alternativo*
           </label>
-          <input
-            type="number"
-            value={content.height || ''}
-            onChange={(e) => updateContent('height', e.target.value ? parseInt(e.target.value) : undefined)}
-            placeholder="Auto"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          <textarea
+            value={content.alt || ''}
+            onChange={(e) => updateContent('alt', e.target.value)}
+            placeholder="Descrição da imagem para acessibilidade..."
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              hasError('content.alt')
+                ? 'border-red-500 focus:ring-red-500'
+                : 'border-gray-300 focus:ring-indigo-500'
+            }`}
+            rows={3}
+            required
           />
+          <p className="text-xs text-gray-500 mt-1">
+            Importante para acessibilidade e SEO
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Largura (px)
+            </label>
+            <input
+              type="number"
+              value={content.width || ''}
+              onChange={(e) => updateContent('width', e.target.value ? parseInt(e.target.value) : undefined)}
+              placeholder="Auto"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Altura (px)
+            </label>
+            <input
+              type="number"
+              value={content.height || ''}
+              onChange={(e) => updateContent('height', e.target.value ? parseInt(e.target.value) : undefined)}
+              placeholder="Auto"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+
+        {/* Pontos de interação */}
+        <div className="pt-3 border-t border-gray-200 space-y-3">
+          <h4 className="text-sm font-semibold text-gray-700">Pontos de interação</h4>
+          <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-2">
+              <Image className="w-5 h-5 text-blue-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-700">Habilitar pontos de interação</p>
+                <p className="text-xs text-gray-500">
+                  Adiciona pontos clicáveis sobre a imagem • Cada ponto exibe um texto em modal no preview.
+                </p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={content.interactionEnabled || false}
+                onChange={(e) => updateContent('interactionEnabled', e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+
+          {content.interactionEnabled && (
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-gray-700">
+                  Gerenciar pontos ({points.length}/10)
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={addInteractionPoint}
+                    disabled={points.length >= 10}
+                    className="w-10 h-10 flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-50 disabled:text-gray-300 text-white rounded-lg transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                  <p className="text-xs text-gray-500">
+                    Clique para adicionar um novo ponto no centro da imagem.
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Texto de cada ponto: no máximo {IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS} caracteres.
+                </p>
+              </div>
+
+              {points.length > 0 && (
+                <div className="space-y-2">
+                  {points.map((point: any, index: number) => {
+                    const isActive = activePointId ? activePointId === point.id : index === 0;
+                    return (
+                      <div
+                        key={point.id || index}
+                        onClick={() =>
+                          onUpdate({
+                            content: {
+                              ...content,
+                              interactionActivePointId: point.id,
+                            },
+                          })
+                        }
+                        className={`w-full text-left border rounded-md p-2 transition-colors cursor-pointer ${
+                          isActive
+                            ? 'border-indigo-500 bg-indigo-50'
+                            : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                        }`}
+                      >
+                      <div className="flex items-center justify-between mb-1">
+                        <span
+                          className={`text-xs font-medium ${
+                            hasError(`content.interactionPoints[${index}].text`)
+                              ? 'text-red-600'
+                              : 'text-gray-700'
+                          }`}
+                        >
+                          Ponto {index + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removePoint(index);
+                          }}
+                          className="text-xs text-red-500 hover:text-red-600 cursor-pointer"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                      <textarea
+                        value={point.text ?? ''}
+                        onChange={(e) => updatePointText(index, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onFocus={(e) => {
+                          e.stopPropagation();
+                          onUpdate({
+                            content: {
+                              ...content,
+                              interactionActivePointId: point.id,
+                            },
+                          });
+                        }}
+                        className={`w-full px-2 py-1 text-xs border rounded-md focus:outline-none focus:ring-1 ${
+                          hasError(`content.interactionPoints[${index}].text`)
+                            ? 'border-red-500 focus:ring-red-500'
+                            : 'border-gray-300 focus:ring-indigo-500'
+                        }`}
+                        rows={2}
+                        maxLength={IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS}
+                        placeholder="Novo ponto de interação"
+                      />
+                      <p
+                        className={`mt-1 text-xs text-right ${
+                          (point.text ?? '').length >= IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS
+                            ? 'text-amber-600'
+                            : 'text-gray-500'
+                        }`}
+                      >
+                        {(point.text ?? '').length}/{IMAGE_INTERACTION_POINT_TEXT_MAX_CHARS} caracteres
+                      </p>
+                      {hasError(`content.interactionPoints[${index}].text`) && (
+                        <p className="mt-1 text-xs text-red-600">
+                          {getErrorMessage(`content.interactionPoints[${index}].text`)}
+                        </p>
+                      )}
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        A posição do ponto é ajustada arrastando-o diretamente sobre a imagem.
+                      </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderButtonProperties = () => (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className={`block text-sm font-medium mb-1 ${
+          hasError('content.label') ? 'text-red-600' : 'text-gray-700'
+        }`}>
           Texto do Botão*
         </label>
         <input
@@ -415,12 +751,18 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           value={content.label || ''}
           onChange={(e) => updateContent('label', e.target.value)}
           placeholder="Clique aqui"
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+            hasError('content.label')
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className={`block text-sm font-medium mb-1 ${
+          hasError('content.url') ? 'text-red-600' : 'text-gray-700'
+        }`}>
           URL do Link*
         </label>
         <input
@@ -428,7 +770,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           value={content.url || ''}
           onChange={(e) => updateContent('url', e.target.value)}
           placeholder="https://exemplo.com ou #"
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+            hasError('content.url')
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
         />
       </div>
 
@@ -482,7 +828,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
   const renderVideoProperties = () => (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className={`block text-sm font-medium mb-1 ${
+          hasError('content.url') ? 'text-red-600' : 'text-gray-700'
+        }`}>
           URL do Vídeo*
         </label>
         <input
@@ -490,7 +838,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           value={content.url || ''}
           onChange={(e) => updateContent('url', e.target.value)}
           placeholder="https://youtube.com/watch?v=... ou https://vimeo.com/..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+            hasError('content.url')
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
         />
       </div>
 
@@ -510,7 +862,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className={`block text-sm font-medium mb-1 ${
+          hasError('content.title') ? 'text-red-600' : 'text-gray-700'
+        }`}>
           Título do Vídeo*
         </label>
         <input
@@ -518,12 +872,18 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           value={content.title || ''}
           onChange={(e) => updateContent('title', e.target.value)}
           placeholder="Título do vídeo..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+            hasError('content.title')
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
         />
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className={`block text-sm font-medium mb-1 ${
+          hasError('content.description') ? 'text-red-600' : 'text-gray-700'
+        }`}>
           Descrição*
         </label>
         <textarea
@@ -531,7 +891,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           onChange={(e) => updateContent('description', e.target.value)}
           placeholder="Descrição do vídeo para acessibilidade..."
           rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+            hasError('content.description')
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
         />
         <p className="text-xs text-gray-500 mt-1">
           Importante para acessibilidade
@@ -560,6 +924,123 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       </div>
     </div>
   );
+
+  const renderEmbedProperties = () => {
+    const iframeCode = content.iframe || '';
+
+    // Extrai width/height atuais do código do iframe (se houver)
+    let iframeWidth = '';
+    let iframeHeight = '';
+
+    if (typeof document !== 'undefined' && iframeCode && iframeCode.includes('<iframe')) {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = iframeCode;
+      const iframeEl = wrapper.querySelector('iframe') as HTMLIFrameElement | null;
+      if (iframeEl) {
+        iframeWidth = iframeEl.getAttribute('width') || (iframeEl.style.width || '');
+        iframeHeight = iframeEl.getAttribute('height') || (iframeEl.style.height || '');
+      }
+    }
+
+    const handleIframeChange = (value: string) => {
+      updateContent('iframe', value);
+    };
+
+    const updateIframeSize = (dimension: 'width' | 'height', value: string) => {
+      const code = content.iframe || '';
+
+      if (typeof document === 'undefined') {
+        updateContent('iframe', code);
+        return;
+      }
+
+      const hasIframeTag = code.includes('<iframe');
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = hasIframeTag ? code : (code.trim() ? `<iframe src="${code.trim()}"></iframe>` : '<iframe></iframe>');
+
+      const iframeEl = wrapper.querySelector('iframe') as HTMLIFrameElement | null;
+      if (!iframeEl) {
+        updateContent('iframe', code);
+        return;
+      }
+
+      if (dimension === 'width') {
+        if (value) {
+          iframeEl.setAttribute('width', value);
+        } else {
+          iframeEl.removeAttribute('width');
+          iframeEl.style.width = '';
+        }
+      } else {
+        if (value) {
+          iframeEl.setAttribute('height', value);
+        } else {
+          iframeEl.removeAttribute('height');
+          iframeEl.style.height = '';
+        }
+      }
+
+      const newCode = wrapper.innerHTML;
+      updateContent('iframe', newCode);
+    };
+
+    return (
+      <div className="space-y-4">
+        <div>
+          <label
+            className={`block text-sm font-medium mb-1 ${
+              hasError('content.iframe') ? 'text-red-600' : 'text-gray-700'
+            }`}
+          >
+            Código do iframe*
+          </label>
+          <textarea
+            value={content.iframe || ''}
+            onChange={(e) => handleIframeChange(e.target.value)}
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              hasError('content.iframe')
+                ? 'border-red-500 focus:ring-red-500'
+                : 'border-gray-300 focus:ring-indigo-500'
+            }`}
+            rows={5}
+            placeholder='<iframe src="..."></iframe>'
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Cole aqui o código do iframe fornecido pelo H5P ou outro serviço de embed.
+          </p>
+        </div>
+
+        {/* Controles de tamanho */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Largura (width)
+            </label>
+            <input
+              type="text"
+              value={iframeWidth}
+              onChange={(e) => updateIframeSize('width', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="ex: 1090"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Altura (height)
+            </label>
+            <input
+              type="text"
+              value={iframeHeight}
+              onChange={(e) => updateIframeSize('height', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="ex: 615"
+            />
+          </div>
+        </div>
+
+      </div>
+    );
+  };
 
   const renderTableProperties = () => {
     const headers: string[] = content.headers || ['Coluna 1'];
@@ -894,9 +1375,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
     return (
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Upload de Áudio*
-          </label>
+        <label className={`block text-sm font-medium mb-1 ${
+          hasError('content.src') ? 'text-red-600' : 'text-gray-700'
+        }`}>
+          Upload de Áudio*
+        </label>
           <input
             ref={audioFileInputRef}
             type="file"
@@ -907,7 +1390,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           <button
             onClick={() => audioFileInputRef.current?.click()}
             disabled={isAudioLoading}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              hasError('content.src')
+                ? 'bg-white text-red-700 border border-red-500 focus:ring-red-500 hover:bg-red-50'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500'
+            }`}
           >
             {isAudioLoading ? (
               <>
@@ -929,7 +1416,9 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className={`block text-sm font-medium mb-1 ${
+            hasError('content.title') ? 'text-red-600' : 'text-gray-700'
+          }`}>
             Título do Áudio*
           </label>
           <input
@@ -937,7 +1426,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             value={content.title || ''}
             onChange={(e) => updateContent('title', e.target.value)}
             placeholder="Nome do arquivo de áudio..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+              hasError('content.title')
+                ? 'border-red-500 focus:ring-red-500'
+                : 'border-gray-300 focus:ring-indigo-500'
+            }`}
           />
           <p className="text-xs text-gray-500 mt-1">
             Recomendado para acessibilidade
@@ -983,10 +1476,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
   const renderTabsProperties = () => {
     const tabs = content.tabs || [
-      { title: 'Aba 1', content: 'Conteúdo da aba 1' },
-      { title: 'Aba 2', content: 'Conteúdo da aba 2' }
+      { title: '', content: '' },
+      { title: '', content: '' }
     ];
-    const [selectedTab, setSelectedTab] = useState<number>(0);
+    const selectedTab = Math.min(tabsSelectedIndex, Math.max(0, tabs.length - 1));
+    const setSelectedTab = setTabsSelectedIndex;
 
     const updateTabCount = (count: number) => {
       const currentCount = tabs.length;
@@ -997,8 +1491,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         const newTabs = [...tabs];
         for (let i = currentCount; i < count; i++) {
           newTabs.push({
-            title: `Aba ${i + 1}`,
-            content: `Conteúdo da aba ${i + 1}`,
+            title: '',
+            content: '',
           });
         }
         updateContent('tabs', newTabs);
@@ -1006,8 +1500,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         // Remover abas do final
         const newTabs = tabs.slice(0, count);
         updateContent('tabs', newTabs);
-        if (selectedTab >= count) {
-          setSelectedTab(Math.max(0, count - 1));
+        if (tabsSelectedIndex >= count) {
+          setTabsSelectedIndex(Math.max(0, count - 1));
         }
       }
     };
@@ -1118,7 +1612,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
             {/* Título da Aba */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                className={`block text-sm font-medium mb-1 ${
+                  hasError(`content.tabs[${selectedTab}].title`) ? 'text-red-600' : 'text-gray-700'
+                }`}
+              >
                 Título da Aba*
               </label>
               <input
@@ -1126,13 +1624,21 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
                 value={currentTab.title || ''}
                 onChange={(e) => updateTabField(selectedTab, 'title', e.target.value)}
                 placeholder="Digite o título da aba"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                  hasError(`content.tabs[${selectedTab}].title`)
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-indigo-500'
+                }`}
               />
             </div>
 
             {/* Conteúdo da Aba */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                className={`block text-sm font-medium mb-1 ${
+                  hasError(`content.tabs[${selectedTab}].content`) ? 'text-red-600' : 'text-gray-700'
+                }`}
+              >
                 Conteúdo da Aba*
               </label>
               <textarea
@@ -1140,7 +1646,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
                 onChange={(e) => updateTabField(selectedTab, 'content', e.target.value)}
                 placeholder="Digite o conteúdo da aba"
                 rows={4}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none ${
+                  hasError(`content.tabs[${selectedTab}].content`)
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-indigo-500'
+                }`}
               />
             </div>
           </div>
@@ -1233,7 +1743,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           
           {/* Texto do Botão */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              className={`block text-sm font-medium mb-1 ${
+                hasError('content.trigger.content.label') ? 'text-red-600' : 'text-gray-700'
+              }`}
+            >
               Texto do Botão*
             </label>
             <input
@@ -1241,7 +1755,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
               value={trigger.content.label || ''}
               onChange={(e) => updateTrigger('label', e.target.value)}
               placeholder="Digite o texto do botão"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                hasError('content.trigger.content.label')
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-indigo-500'
+              }`}
             />
           </div>
 
@@ -1284,7 +1802,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           
           {/* Título do Modal */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              className={`block text-sm font-medium mb-1 ${
+                hasError('content.modalData.title') ? 'text-red-600' : 'text-gray-700'
+              }`}
+            >
               Título do Modal*
             </label>
             <input
@@ -1292,21 +1814,33 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
               value={modalData.title || ''}
               onChange={(e) => updateModalData('title', e.target.value)}
               placeholder="Digite o título do modal"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                hasError('content.modalData.title')
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-indigo-500'
+              }`}
             />
           </div>
 
           {/* Texto do Modal */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Texto do Modal
+            <label
+              className={`block text-sm font-medium mb-1 ${
+                hasError('content.modalData.text') ? 'text-red-600' : 'text-gray-700'
+              }`}
+            >
+              Texto do Modal*
             </label>
             <textarea
               value={modalData.text || ''}
               onChange={(e) => updateModalData('text', e.target.value)}
               placeholder="Digite o conteúdo do modal"
               rows={4}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none ${
+                hasError('content.modalData.text')
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-indigo-500'
+              }`}
             />
           </div>
 
@@ -1442,7 +1976,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       { title: 'Accordion 1', content: 'Conteúdo do accordion 1', isOpen: false },
       { title: 'Accordion 2', content: 'Conteúdo do accordion 2', isOpen: false }
     ];
-    const [selectedItem, setSelectedItem] = useState<number>(0);
+    const selectedItem = Math.min(accordionSelectedItem, Math.max(0, items.length - 1));
+    const setSelectedItem = setAccordionSelectedItem;
 
     const updateItemCount = (count: number) => {
       const currentCount = items.length;
@@ -1463,8 +1998,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         // Remover itens do final
         const newItems = items.slice(0, count);
         updateContent('items', newItems);
-        if (selectedItem >= count) {
-          setSelectedItem(Math.max(0, count - 1));
+        if (accordionSelectedItem >= count) {
+          setAccordionSelectedItem(Math.max(0, count - 1));
         }
       }
     };
@@ -1484,6 +2019,17 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         ...newItems[index],
         isOpen: !newItems[index].isOpen,
       };
+      updateContent('items', newItems);
+    };
+
+    // Habilitar/Desabilitar imagem em todos os itens (layout semelhante ao carrossel)
+    const toggleAllItemsImage = () => {
+      const hasImageEnabled = items.some((item: any) => item.image);
+      const newItems = items.map((item: any) =>
+        hasImageEnabled
+          ? { ...item, image: undefined }
+          : { ...item, image: item.image || { src: '', alt: '' } }
+      );
       updateContent('items', newItems);
     };
 
@@ -1516,6 +2062,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
             />
           </div>
         </div>
+
 
         {/* Quantidade de Itens */}
         <div className="space-y-2">
@@ -1551,6 +2098,37 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           </p>
         </div>
 
+      {/* Configuração de Imagem Global - semelhante ao carrossel */}
+        <div className="space-y-3 pb-4 border-b">
+          <h4 className="text-sm font-semibold text-gray-700">Configurações de Imagem</h4>
+          <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-2">
+              <Image className="w-5 h-5 text-blue-600" />
+              <div>
+                <p className="text-sm font-medium text-gray-700">Habilitar Imagem</p>
+                <p className="text-xs text-gray-500">
+                  Aplica um espaço de imagem em todos os itens • Faça upload individual em cada accordion.
+                </p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={items.some((item: any) => item.image)}
+                onChange={toggleAllItemsImage}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+          {items.some((item: any) => item.image) && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs text-blue-800">
+                💡 <strong>Dica:</strong> Cada item pode ter sua própria imagem. Clique em “Habilitar imagem” em um item e use o upload para definir arquivos diferentes.
+              </p>
+            </div>
+          )}
+        </div>
         {/* Seleção de Item para Editar */}
         {items.length > 1 && (
           <div className="space-y-2">
@@ -1582,27 +2160,34 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
               <h4 className="text-sm font-semibold text-gray-700">
                 Editando Item {selectedItem + 1}
               </h4>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500">Aberto:</label>
-                <input
-                  type="checkbox"
-                  checked={currentItem.isOpen || false}
-                  onChange={(e) => {
-                    const newItems = [...items];
-                    newItems[selectedItem] = {
-                      ...newItems[selectedItem],
-                      isOpen: e.target.checked,
-                    };
-                    updateContent('items', newItems);
-                  }}
-                  className="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500"
-                />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500">Aberto:</label>
+                  <input
+                    type="checkbox"
+                    checked={currentItem.isOpen || false}
+                    onChange={(e) => {
+                      const newItems = [...items];
+                      newItems[selectedItem] = {
+                        ...newItems[selectedItem],
+                        isOpen: e.target.checked,
+                      };
+                      updateContent('items', newItems);
+                    }}
+                    className="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                
               </div>
             </div>
 
             {/* Título do Item */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                className={`block text-sm font-medium mb-1 ${
+                  hasError(`content.items[${selectedItem}].title`) ? 'text-red-600' : 'text-gray-700'
+                }`}
+              >
                 Título do Item*
               </label>
               <input
@@ -1610,13 +2195,21 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
                 value={currentItem.title || ''}
                 onChange={(e) => updateItemField(selectedItem, 'title', e.target.value)}
                 placeholder="Digite o título do accordion"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                  hasError(`content.items[${selectedItem}].title`)
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-indigo-500'
+                }`}
               />
             </div>
 
             {/* Conteúdo do Item */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                className={`block text-sm font-medium mb-1 ${
+                  hasError(`content.items[${selectedItem}].content`) ? 'text-red-600' : 'text-gray-700'
+                }`}
+              >
                 Conteúdo do Item*
               </label>
               <textarea
@@ -1624,9 +2217,29 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
                 onChange={(e) => updateItemField(selectedItem, 'content', e.target.value)}
                 placeholder="Digite o conteúdo do accordion"
                 rows={4}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none ${
+                  hasError(`content.items[${selectedItem}].content`)
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-indigo-500'
+                }`}
               />
             </div>
+            
+            {/* Imagem do Item (opcional, por item) */}
+            {currentItem.image && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Imagem do Item
+                </label>
+                <AccordionItemImageUpload
+                  itemIndex={selectedItem}
+                  item={currentItem}
+                  items={items}
+                  updateContent={updateContent}
+                  validationErrors={validationErrors}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -1645,7 +2258,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
   const renderCarouselProperties = () => {
     const items = content.items || [];
-    const [selectedCard, setSelectedCard] = useState<number>(0);
+    const selectedCard = Math.min(carouselSelectedCard, Math.max(0, items.length - 1));
+    const setSelectedCard = setCarouselSelectedCard;
 
     const updateCardCount = (count: number) => {
       const currentCount = items.length;
@@ -1659,8 +2273,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         
         for (let i = currentCount; i < count; i++) {
           const newCard: any = {
-            title: `Slide ${i + 1}`,
-            text: 'Clique para editar o conteúdo',
+            title: '',
+            text: '',
           };
           
           // Herdar imagem se estiver habilitada globalmente
@@ -1680,8 +2294,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         // Remover cards do final
         const newItems = items.slice(0, count);
         updateContent('items', newItems);
-        if (selectedCard >= count) {
-          setSelectedCard(Math.max(0, count - 1));
+        if (carouselSelectedCard >= count) {
+          setCarouselSelectedCard(Math.max(0, count - 1));
         }
       }
     };
@@ -1809,7 +2423,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
             {/* Título */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                className={`block text-sm font-medium mb-1 ${
+                  hasError(`content.items[${selectedCard}].title`) ? 'text-red-600' : 'text-gray-700'
+                }`}
+              >
                 Título*
               </label>
               <input
@@ -1817,13 +2435,21 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
                 value={currentCard.title || ''}
                 onChange={(e) => updateCardField(selectedCard, 'title', e.target.value)}
                 placeholder="Digite o título do slide"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                  hasError(`content.items[${selectedCard}].title`)
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-indigo-500'
+                }`}
               />
             </div>
 
             {/* Texto */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                className={`block text-sm font-medium mb-1 ${
+                  hasError(`content.items[${selectedCard}].text`) ? 'text-red-600' : 'text-gray-700'
+                }`}
+              >
                 Texto*
               </label>
               <textarea
@@ -1831,7 +2457,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
                 onChange={(e) => updateCardField(selectedCard, 'text', e.target.value)}
                 placeholder="Digite o conteúdo do slide"
                 rows={3}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none ${
+                  hasError(`content.items[${selectedCard}].text`)
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-indigo-500'
+                }`}
               />
             </div>
 
@@ -1962,18 +2592,26 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
     return (
       <div className="space-y-6">
         {/* Pergunta */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Pergunta*
-          </label>
-          <textarea
-            value={content.question || ''}
-            onChange={(e) => updateContent('question', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            rows={3}
-            placeholder="Digite a pergunta..."
-          />
-        </div>
+            <div>
+              <label
+                className={`block text-sm font-medium mb-2 ${
+                  hasError('content.question') ? 'text-red-600' : 'text-gray-700'
+                }`}
+              >
+                Pergunta*
+              </label>
+              <textarea
+                value={content.question || ''}
+                onChange={(e) => updateContent('question', e.target.value)}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+                  hasError('content.question')
+                    ? 'border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:ring-indigo-500'
+                }`}
+                rows={3}
+                placeholder="Digite a pergunta..."
+              />
+            </div>
 
         {/* Alternativas */}
         <div>
@@ -2025,23 +2663,31 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           <div className="space-y-3">
             <div>
               <label className="text-xs text-gray-600 mb-1 block">Resposta Incorreta</label>
-              <input
-                type="text"
+              <textarea
                 value={feedbacks[0]?.text || ''}
-                onChange={(e) => updateFeedback(0, 'text', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => updateFeedback(0, 'text', e.target.value.slice(0, 500))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                 placeholder="Feedback para resposta incorreta"
+                rows={3}
+                maxLength={500}
               />
+              <p className="mt-1 text-xs text-gray-400 text-right">
+                {(feedbacks[0]?.text || '').length}/500 caracteres
+              </p>
             </div>
             <div>
               <label className="text-xs text-gray-600 mb-1 block">Resposta Correta</label>
-              <input
-                type="text"
+              <textarea
                 value={feedbacks[1]?.text || ''}
-                onChange={(e) => updateFeedback(1, 'text', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => updateFeedback(1, 'text', e.target.value.slice(0, 500))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                 placeholder="Feedback para resposta correta"
+                rows={3}
+                maxLength={500}
               />
+              <p className="mt-1 text-xs text-gray-400 text-right">
+                {(feedbacks[1]?.text || '').length}/500 caracteres
+              </p>
             </div>
           </div>
         </div>
@@ -2069,6 +2715,14 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
 
   const renderQuizTrueFalseProperties = () => {
     const feedbacks = content.feedbacks || [];
+    const perguntaHasError = hasError('content.question');
+    const perguntaErrorMessage = validationErrors.find(
+      (err) => err.field === 'content.question'
+    )?.message;
+    const respostaCorretaHasError = hasError('content.correctAnswer');
+    const respostaCorretaErrorMessage = validationErrors.find(
+      (err) => err.field === 'content.correctAnswer'
+    )?.message;
 
     const updateFeedback = (index: number, field: string, value: any) => {
       const newFeedbacks = [...feedbacks];
@@ -2080,45 +2734,71 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
       <div className="space-y-6">
         {/* Pergunta */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Pergunta*
-          </label>
-          <textarea
-            value={content.question || ''}
-            onChange={(e) => updateContent('question', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            rows={3}
-            placeholder="Digite a pergunta..."
-          />
+        <label className={`block text-sm font-medium mb-2 ${
+          perguntaHasError ? 'text-red-600' : 'text-gray-700'
+        }`}>
+          Pergunta*
+        </label>
+        <textarea
+          value={content.question || ''}
+          onChange={(e) => updateContent('question', e.target.value)}
+          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
+            perguntaHasError
+              ? 'border-red-500 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-indigo-500'
+          }`}
+          rows={3}
+          placeholder="Digite a pergunta..."
+        />
+        {perguntaHasError && perguntaErrorMessage && (
+          <p className="mt-1 text-xs text-red-600">{perguntaErrorMessage}</p>
+        )}
         </div>
 
         {/* Resposta Correta */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className={`block text-sm font-medium mb-2 ${
+            respostaCorretaHasError ? 'text-red-600' : 'text-gray-700'
+          }`}>
             Resposta Correta*
           </label>
-          <div className="flex space-x-4">
+          <div
+            className={`flex space-x-4 rounded-lg p-1 ${
+              respostaCorretaHasError
+                ? 'ring-2 ring-red-500 ring-offset-1 bg-red-50/50'
+                : ''
+            }`}
+          >
             <button
+              type="button"
               onClick={() => updateContent('correctAnswer', true)}
               className={`px-4 py-2 rounded-lg border-2 font-medium ${
                 content.correctAnswer === true
                   ? 'border-green-500 bg-green-50 text-green-700'
+                  : respostaCorretaHasError
+                  ? 'border-red-300 text-gray-700 hover:bg-gray-50'
                   : 'border-gray-300 hover:bg-gray-50'
               }`}
             >
               Verdadeiro
             </button>
             <button
+              type="button"
               onClick={() => updateContent('correctAnswer', false)}
               className={`px-4 py-2 rounded-lg border-2 font-medium ${
                 content.correctAnswer === false
                   ? 'border-red-500 bg-red-50 text-red-700'
+                  : respostaCorretaHasError
+                  ? 'border-red-300 text-gray-700 hover:bg-gray-50'
                   : 'border-gray-300 hover:bg-gray-50'
               }`}
             >
               Falso
             </button>
           </div>
+          {respostaCorretaHasError && respostaCorretaErrorMessage && (
+            <p className="mt-1 text-xs text-red-600">{respostaCorretaErrorMessage}</p>
+          )}
         </div>
 
         {/* Feedbacks */}
@@ -2129,23 +2809,31 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           <div className="space-y-3">
             <div>
               <label className="text-xs text-gray-600 mb-1 block">Resposta Incorreta</label>
-              <input
-                type="text"
+              <textarea
                 value={feedbacks[0]?.text || ''}
-                onChange={(e) => updateFeedback(0, 'text', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => updateFeedback(0, 'text', e.target.value.slice(0, 500))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                 placeholder="Feedback para resposta incorreta"
+                rows={3}
+                maxLength={500}
               />
+              <p className="mt-1 text-xs text-gray-400 text-right">
+                {(feedbacks[0]?.text || '').length}/500 caracteres
+              </p>
             </div>
             <div>
               <label className="text-xs text-gray-600 mb-1 block">Resposta Correta</label>
-              <input
-                type="text"
+              <textarea
                 value={feedbacks[1]?.text || ''}
-                onChange={(e) => updateFeedback(1, 'text', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => updateFeedback(1, 'text', e.target.value.slice(0, 500))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                 placeholder="Feedback para resposta correta"
+                rows={3}
+                maxLength={500}
               />
+              <p className="mt-1 text-xs text-gray-400 text-right">
+                {(feedbacks[1]?.text || '').length}/500 caracteres
+              </p>
             </div>
           </div>
         </div>
@@ -2261,23 +2949,31 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           <div className="space-y-3">
             <div>
               <label className="text-xs text-gray-600 mb-1 block">Resposta Incorreta</label>
-              <input
-                type="text"
+              <textarea
                 value={feedbacks[0]?.text || ''}
-                onChange={(e) => updateFeedback(0, 'text', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => updateFeedback(0, 'text', e.target.value.slice(0, 500))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                 placeholder="Feedback para resposta incorreta"
+                rows={3}
+                maxLength={500}
               />
+              <p className="mt-1 text-xs text-gray-400 text-right">
+                {(feedbacks[0]?.text || '').length}/500 caracteres
+              </p>
             </div>
             <div>
               <label className="text-xs text-gray-600 mb-1 block">Resposta Correta</label>
-              <input
-                type="text"
+              <textarea
                 value={feedbacks[1]?.text || ''}
-                onChange={(e) => updateFeedback(1, 'text', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => updateFeedback(1, 'text', e.target.value.slice(0, 500))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                 placeholder="Feedback para resposta correta"
+                rows={3}
+                maxLength={500}
               />
+              <p className="mt-1 text-xs text-gray-400 text-right">
+                {(feedbacks[1]?.text || '').length}/500 caracteres
+              </p>
             </div>
           </div>
         </div>
@@ -2349,19 +3045,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
           </div>
         </div>
 
-        {/* Placeholder */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Placeholder
-          </label>
-          <input
-            type="text"
-            value={content.placeholder || ''}
-            onChange={(e) => updateContent('placeholder', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Texto de exemplo no campo de resposta"
-          />
-        </div>
+        
 
         {/* Configurações */}
         <div className="space-y-3">
@@ -2441,6 +3125,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({ block, isPreview = false,
         return renderAccordionProperties();
       case 'modal':
         return renderModalProperties();
+      case 'embed':
+        return renderEmbedProperties();
       case 'quiz-multiple-choice':
         return renderQuizMultipleChoiceProperties();
       case 'quiz-true-false':

@@ -3,6 +3,7 @@ import { BlockProps } from '@/types/builder';
 import { ValidationUtils } from '@/utils/validation';
 import TextFormattingToolbar from '../TextFormattingToolbar';
 import { useTextFormatting, TextFormats, getStyleFromFormats } from '@/hooks/useTextFormatting';
+import RichTextEditableField from './RichTextEditableField';
 import { AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal, AlignStartVertical, AlignCenterVertical, AlignEndVertical } from 'lucide-react';
 
 interface StubBlockProps {
@@ -185,73 +186,85 @@ export const TableBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
         <table className={tableClass}>
           <thead>
             <tr>
-              {headers.map((h, colIdx) => (
-                <th 
-                  key={colIdx} 
-                  className={thClass}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startEditing(-1, colIdx, h || `Coluna ${colIdx + 1}`);
-                  }}
-                >
-                  {editingCell?.row === -1 && editingCell?.col === colIdx ? (
-                    <input
-                      type="text"
-                      value={editingValue}
-                      onChange={(e) => setEditingValue(e.target.value)}
-                      onFocus={() => showToolbarForCell(-1, colIdx)}
-                      onBlur={() => {
-                        if (globalFormattingToolbar) globalFormattingToolbar.hide();
-                        finishEditing();
-                      }}
-                      onKeyDown={handleKeyDown}
-                      style={getStyleFromFormats(cellStyles[cellStyleKey(-1, colIdx)] || {})}
-                      className="w-full bg-transparent border-none outline-none text-xs font-semibold text-gray-700"
-                      autoFocus
-                    />
-                  ) : (
-                    <span style={getStyleFromFormats(cellStyles[cellStyleKey(-1, colIdx)] || {})}>
-                      {h || `Coluna ${colIdx + 1}`}
-                    </span>
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className={tbodyClass}>
-            {rows.map((row, rowIdx) => (
-              <tr key={rowIdx} className={format === 'striped' && rowIdx % 2 === 1 ? 'bg-gray-50' : ''}>
-                {headers.map((_, colIdx) => (
-                  <td 
+              {headers.map((h, colIdx) => {
+                const cellFormat = cellStyles[cellStyleKey(-1, colIdx)] || {};
+                const fullStyle = getStyleFromFormats(cellFormat);
+                const textAlign = fullStyle.textAlign;
+                return (
+                  <th 
                     key={colIdx} 
-                    className={tdClass}
+                    className={thClass}
+                    style={textAlign ? { textAlign } : undefined}
                     onClick={(e) => {
                       e.stopPropagation();
-                      startEditing(rowIdx, colIdx, row[colIdx] || '');
+                      startEditing(-1, colIdx, h || `Coluna ${colIdx + 1}`);
                     }}
                   >
-                    {editingCell?.row === rowIdx && editingCell?.col === colIdx ? (
+                    {editingCell?.row === -1 && editingCell?.col === colIdx ? (
                       <input
                         type="text"
                         value={editingValue}
                         onChange={(e) => setEditingValue(e.target.value)}
-                        onFocus={() => showToolbarForCell(rowIdx, colIdx)}
+                        onFocus={() => showToolbarForCell(-1, colIdx)}
                         onBlur={() => {
                           if (globalFormattingToolbar) globalFormattingToolbar.hide();
                           finishEditing();
                         }}
                         onKeyDown={handleKeyDown}
-                        style={getStyleFromFormats(cellStyles[cellStyleKey(rowIdx, colIdx)] || {})}
-                        className="w-full bg-transparent border-none outline-none text-sm text-gray-700"
+                        style={fullStyle}
+                        className="w-full bg-transparent border-none outline-none text-xs font-semibold text-gray-700"
                         autoFocus
                       />
                     ) : (
-                      <span style={getStyleFromFormats(cellStyles[cellStyleKey(rowIdx, colIdx)] || {})}>
-                        {row[colIdx] || ''}
+                      <span style={fullStyle}>
+                        {h || `Coluna ${colIdx + 1}`}
                       </span>
                     )}
-                  </td>
-                ))}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody className={tbodyClass}>
+            {rows.map((row, rowIdx) => (
+              <tr key={rowIdx} className={format === 'striped' && rowIdx % 2 === 1 ? 'bg-gray-50' : ''}>
+                {headers.map((_, colIdx) => {
+                  const cellFormat = cellStyles[cellStyleKey(rowIdx, colIdx)] || {};
+                  const fullStyle = getStyleFromFormats(cellFormat);
+                  const textAlign = fullStyle.textAlign;
+                  return (
+                    <td 
+                      key={colIdx} 
+                      className={tdClass}
+                      style={textAlign ? { textAlign } : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditing(rowIdx, colIdx, row[colIdx] || '');
+                      }}
+                    >
+                      {editingCell?.row === rowIdx && editingCell?.col === colIdx ? (
+                        <input
+                          type="text"
+                          value={editingValue}
+                          onChange={(e) => setEditingValue(e.target.value)}
+                          onFocus={() => showToolbarForCell(rowIdx, colIdx)}
+                          onBlur={() => {
+                            if (globalFormattingToolbar) globalFormattingToolbar.hide();
+                            finishEditing();
+                          }}
+                          onKeyDown={handleKeyDown}
+                          style={fullStyle}
+                          className="w-full bg-transparent border-none outline-none text-sm text-gray-700"
+                          autoFocus
+                        />
+                      ) : (
+                        <span style={fullStyle}>
+                          {row[colIdx] || ''}
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -323,21 +336,48 @@ export const BadgeBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSele
 };
 
 export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true, globalFormattingToolbar }) => {
+  const TEXT_PLACEHOLDER = 'Clique para editar o conteúdo';
   const items = block.props?.content?.items || [];
+  const validationErrors = (block.props as any)?.validationErrors || [];
   const [currentSlide, setCurrentSlide] = React.useState(0);
   const [editingField, setEditingField] = React.useState<{cardIndex: number, field: string} | null>(null);
-  const [showFormattingToolbar, setShowFormattingToolbar] = React.useState<{cardIndex: number, field: string} | null>(null);
   const [imageUploadError, setImageUploadError] = React.useState<Record<string, string | null>>({});
-  
-  // Estados de formatação para cada campo editável
-  const [titleFormats, setTitleFormats] = React.useState<Record<number, TextFormats>>({});
-  const [textFormats, setTextFormats] = React.useState<Record<number, TextFormats>>({});
-  
+
   // Configurações do carrossel
   const showArrows = block.props?.content?.showArrows !== false;
   const showDots = block.props?.content?.showDots !== false;
-  const cardsPerView = 3; // Quantos cards mostrar por vez
-  const totalSlides = Math.ceil(items.length / cardsPerView);
+
+  /** Largura do contêiner: 3 cards (≥960px), 2 (≥560px), 1 abaixo disso */
+  const carouselViewportRef = React.useRef<HTMLDivElement | null>(null);
+  const [cardsPerView, setCardsPerView] = React.useState(3);
+
+  React.useLayoutEffect(() => {
+    if (items.length === 0) return;
+    const el = carouselViewportRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+
+    const resolveCount = (width: number) => {
+      if (width < 560) return 1;
+      if (width < 960) return 2;
+      return 3;
+    };
+
+    const applyWidth = (width: number) => {
+      const next = resolveCount(width);
+      setCardsPerView((prev) => (prev === next ? prev : next));
+    };
+
+    applyWidth(el.getBoundingClientRect().width);
+
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width ?? el.getBoundingClientRect().width;
+      applyWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [items.length]);
+
+  const totalSlides = Math.ceil(items.length / Math.max(1, cardsPerView));
 
   // Ao reduzir a quantidade de slides, voltar para o último step válido para não deixar todos os cards sumindo
   React.useEffect(() => {
@@ -413,6 +453,11 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
       },
     });
   };
+  const hasFieldError = (index: number, field: 'title' | 'text') => {
+    const path = `content.items[${index}].${field}`;
+    return validationErrors.some((err: any) => err.field === path);
+  };
+
 
   const handleImageUpload = (index: number, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -502,94 +547,6 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
     });
   };
 
-  // Funções para gerenciar formatação
-  const handleFormatChange = (format: string, value: any) => {
-    if (!showFormattingToolbar) return;
-    
-    const { cardIndex, field } = showFormattingToolbar;
-    
-    if (field === 'title') {
-      setTitleFormats(prev => ({
-        ...prev,
-        [cardIndex]: {
-          ...prev[cardIndex],
-          [format]: value
-        }
-      }));
-    } else if (field === 'text') {
-      setTextFormats(prev => ({
-        ...prev,
-        [cardIndex]: {
-          ...prev[cardIndex],
-          [format]: value
-        }
-      }));
-    }
-  };
-
-  const showGlobalToolbar = (cardIndex: number, field: string) => {
-    if (!globalFormattingToolbar) return;
-    
-    const currentFormats = getFormatsForField(cardIndex, field);
-    
-    globalFormattingToolbar.show({
-      isVisible: true,
-      onFormatChange: handleFormatChange,
-      onClose: () => {
-        globalFormattingToolbar.hide();
-        setShowFormattingToolbar(null);
-      },
-      currentFormats
-    });
-    
-    setShowFormattingToolbar({ cardIndex, field });
-  };
-
-  const hideGlobalToolbar = () => {
-    if (globalFormattingToolbar) {
-      globalFormattingToolbar.hide();
-    }
-    setShowFormattingToolbar(null);
-  };
-
-  const getFormatsForField = (cardIndex: number, field: string): TextFormats => {
-    if (field === 'title') {
-      return titleFormats[cardIndex] || {};
-    } else if (field === 'text') {
-      return textFormats[cardIndex] || {};
-    }
-    return {};
-  };
-
-  const getStyleFromFormats = (formats: TextFormats): React.CSSProperties => {
-    const style: React.CSSProperties = {};
-
-    if (formats.bold) style.fontWeight = 'bold';
-    if (formats.italic) style.fontStyle = 'italic';
-    if (formats.underline) style.textDecoration = 'underline';
-    if (formats.fontSize) style.fontSize = `${formats.fontSize}px`;
-    if (formats.color) style.color = formats.color;
-    if (formats.backgroundColor) style.backgroundColor = formats.backgroundColor;
-    if (formats.align) {
-      switch (formats.align) {
-        case 'left':
-          style.textAlign = 'left';
-          break;
-        case 'center':
-          style.textAlign = 'center';
-          break;
-        case 'right':
-          style.textAlign = 'right';
-          break;
-        case 'justify':
-          style.textAlign = 'justify';
-          break;
-      }
-    }
-
-    return style;
-  };
-
   return (
     <div
       className={`relative rounded-lg bg-white ${
@@ -614,9 +571,13 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
         </div>
       )}
 
-      {/* Cards em Grade Horizontal */}
-      <div className="relative p-4">
-        <div className="grid grid-cols-3 gap-4">
+      {/* Cards em Grade Horizontal (colunas conforme largura do bloco) */}
+      <div ref={carouselViewportRef} className="relative p-4 min-w-0">
+        <div
+          className={`grid gap-4 ${
+            cardsPerView === 1 ? 'grid-cols-1' : cardsPerView === 2 ? 'grid-cols-2' : 'grid-cols-3'
+          }`}
+        >
           {visibleCards.map((item: any, index: number) => {
             const actualIndex = startIndex + index;
             return (
@@ -721,99 +682,65 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
 
                   {/* Título */}
                   <div className="mb-2 relative">
-                    {isEditing && editingField?.cardIndex === actualIndex && editingField?.field === 'title' ? (
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={item.title || ''}
-                          onChange={(e) => updateItem(actualIndex, 'title', e.target.value)}
-                          onBlur={() => {
-                            setEditingField(null);
-                            hideGlobalToolbar();
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              setEditingField(null);
-                              hideGlobalToolbar();
-                            }
-                          }}
-                          onFocus={() => showGlobalToolbar(actualIndex, 'title')}
-                          placeholder="Novo Título"
-                          className="w-full text-sm font-bold bg-transparent border-none outline-none"
-                          style={getStyleFromFormats(getFormatsForField(actualIndex, 'title'))}
-                          autoFocus
-                        />
-                      </div>
-                    ) : (
-                      <h3 
-                        className={`text-base font-semibold text-gray-900 break-words ${
-                          isEditing ? 'cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 transition-colors' : ''
-                        }`}
-                        style={getStyleFromFormats(getFormatsForField(actualIndex, 'title'))}
-                        onClick={isEditing ? (e) => {
-                          e.stopPropagation();
-                          setEditingField({cardIndex: actualIndex, field: 'title'});
-                        } : undefined}
-                        title={isEditing ? "Clique para editar" : undefined}
-                      >
-                        {item.title || 'Novo Título'}
-                      </h3>
-                    )}
+                    <RichTextEditableField
+                      html={item.title || ''}
+                      onHtmlChange={(h) => updateItem(actualIndex, 'title', h)}
+                      isActive={
+                        !!(
+                          isEditing &&
+                          editingField?.cardIndex === actualIndex &&
+                          editingField?.field === 'title'
+                        )
+                      }
+                      builderEditMode={isEditing}
+                      onRequestActivate={() =>
+                        setEditingField({ cardIndex: actualIndex, field: 'title' })
+                      }
+                      onRequestDeactivate={() => setEditingField(null)}
+                      blockStyle={block.props.style}
+                      allowLinks={false}
+                      placeholder="Novo Título"
+                      treatAsEmptyPlain={['Novo Título']}
+                      globalFormattingToolbar={globalFormattingToolbar}
+                      displayClassName={`text-base font-semibold text-gray-900 break-words ${
+                        hasFieldError(actualIndex, 'title') ? 'border border-red-500 rounded px-1 py-0.5' : ''
+                      } ${isEditing ? 'hover:bg-gray-100 rounded px-1 py-0.5 transition-colors' : ''}`}
+                      editorClassName="text-sm font-bold"
+                      stopClickPropagation
+                      singleLine
+                      ariaLabel="Editar título do slide"
+                    />
                   </div>
 
                   {/* Texto */}
                   <div className="flex-1 relative">
-                    {isEditing && editingField?.cardIndex === actualIndex && editingField?.field === 'text' ? (
-                      <div className="relative">
-                        <textarea
-                          value={item.text || ''}
-                          onChange={(e) => {
-                            updateItem(actualIndex, 'text', e.target.value);
-                            // Ajustar altura automaticamente
-                            const target = e.target as HTMLTextAreaElement;
-                            target.style.height = 'auto';
-                            target.style.height = `${target.scrollHeight}px`;
-                          }}
-                          onBlur={() => {
-                            setEditingField(null);
-                            hideGlobalToolbar();
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && e.ctrlKey) {
-                              setEditingField(null);
-                              hideGlobalToolbar();
-                            }
-                          }}
-                          onFocus={(e) => {
-                            showGlobalToolbar(actualIndex, 'text');
-                            // Ajustar altura ao focar
-                            const target = e.target as HTMLTextAreaElement;
-                            setTimeout(() => {
-                              target.style.height = 'auto';
-                              target.style.height = `${target.scrollHeight}px`;
-                            }, 0);
-                          }}
-                          placeholder="Digite seu texto aqui..."
-                          className="w-full text-xs bg-transparent border-none outline-none resize-none overflow-hidden"
-                          style={getStyleFromFormats(getFormatsForField(actualIndex, 'text'))}
-                          autoFocus
-                        />
-                      </div>
-                    ) : (
-                      <p 
-                        className={`text-sm text-gray-600 break-words ${
-                          isEditing ? 'cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 transition-colors' : ''
-                        }`}
-                        style={getStyleFromFormats(getFormatsForField(actualIndex, 'text'))}
-                        onClick={isEditing ? (e) => {
-                          e.stopPropagation();
-                          setEditingField({cardIndex: actualIndex, field: 'text'});
-                        } : undefined}
-                        title={isEditing ? "Clique para editar" : undefined}
-                      >
-                        {item.text || 'Digite seu texto aqui...'}
-                      </p>
-                    )}
+                    <RichTextEditableField
+                      html={item.text || ''}
+                      onHtmlChange={(h) => updateItem(actualIndex, 'text', h)}
+                      isActive={
+                        !!(
+                          isEditing &&
+                          editingField?.cardIndex === actualIndex &&
+                          editingField?.field === 'text'
+                        )
+                      }
+                      builderEditMode={isEditing}
+                      onRequestActivate={() =>
+                        setEditingField({ cardIndex: actualIndex, field: 'text' })
+                      }
+                      onRequestDeactivate={() => setEditingField(null)}
+                      blockStyle={block.props.style}
+                      allowLinks={false}
+                      placeholder={TEXT_PLACEHOLDER}
+                      treatAsEmptyPlain={[TEXT_PLACEHOLDER]}
+                      globalFormattingToolbar={globalFormattingToolbar}
+                      displayClassName={`text-sm text-gray-600 break-words ${
+                        hasFieldError(actualIndex, 'text') ? 'border border-red-500 rounded px-1 py-0.5' : ''
+                      } ${isEditing ? 'hover:bg-gray-100 rounded px-1 py-0.5 transition-colors' : ''}`}
+                      editorClassName="text-xs min-h-[4em]"
+                      stopClickPropagation
+                      ariaLabel="Editar texto do slide"
+                    />
                     
                     {/* Selo sem imagem do card - Exibido no canto inferior direito do texto */}
                     {!item.image && item.badge && (
@@ -1117,16 +1044,17 @@ export const CarouselBlock: React.FC<StubBlockProps> = ({ block, isSelected, onS
   );
 };
 
-export const TabsBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true }) => {
+const TAB_CONTENT_PLACEHOLDER = 'Clique para editar o conteúdo desta aba...';
+
+export const TabsBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true, globalFormattingToolbar }) => {
   const tabs = (block.props as any)?.content?.tabs || [
-    { title: 'Aba 1', content: 'Conteúdo da aba 1' },
-    { title: 'Aba 2', content: 'Conteúdo da aba 2' }
+    { title: 'Aba 1', content: '' },
+    { title: 'Aba 2', content: '' }
   ];
-  const activeTab = (block.props as any)?.content?.activeTab || 0;
+  const activeTab = (block.props as any)?.content?.activeTab ?? 0;
   const borderOuter: boolean = (block.props as any)?.content?.borderOuter !== false;
-  
-  const [editingTab, setEditingTab] = React.useState<{tabIndex: number, field: 'title' | 'content'} | null>(null);
-  const [editingValue, setEditingValue] = React.useState('');
+
+  const [editingTab, setEditingTab] = React.useState<{ tabIndex: number; field: 'title' | 'content' } | null>(null);
 
   const updateContent = (field: string, value: any) => {
     if (!onUpdate) return;
@@ -1138,12 +1066,9 @@ export const TabsBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelec
     });
   };
 
-  const updateTab = (tabIndex: number, field: 'title' | 'content', value: string) => {
+  const updateTab = (tabIndex: number, updates: { title?: string; content?: string }) => {
     const newTabs = [...tabs];
-    newTabs[tabIndex] = {
-      ...newTabs[tabIndex],
-      [field]: value,
-    };
+    newTabs[tabIndex] = { ...newTabs[tabIndex], ...updates };
     updateContent('tabs', newTabs);
   };
 
@@ -1151,26 +1076,13 @@ export const TabsBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelec
     updateContent('activeTab', index);
   };
 
-  const startEditing = (tabIndex: number, field: 'title' | 'content', currentValue: string) => {
-    if (!isEditing) return;
-    setEditingTab({ tabIndex, field });
-    setEditingValue(currentValue);
+  const hideToolbar = () => {
+    if (globalFormattingToolbar) globalFormattingToolbar.hide();
   };
 
-  const finishEditing = () => {
-    if (!editingTab) return;
-    updateTab(editingTab.tabIndex, editingTab.field, editingValue);
+  const clearEditing = () => {
     setEditingTab(null);
-    setEditingValue('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      finishEditing();
-    } else if (e.key === 'Escape') {
-      setEditingTab(null);
-      setEditingValue('');
-    }
+    hideToolbar();
   };
 
   return (
@@ -1201,63 +1113,62 @@ export const TabsBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelec
                 : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
             }`}
           >
-            {editingTab?.tabIndex === index && editingTab?.field === 'title' ? (
-              <input
-                type="text"
-                value={editingValue}
-                onChange={(e) => setEditingValue(e.target.value)}
-                onBlur={finishEditing}
-                onKeyDown={handleKeyDown}
-                className="w-full bg-transparent border-none outline-none text-sm font-medium text-center"
-                autoFocus
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <span
-                className={isEditing ? 'cursor-pointer' : ''}
-                onClick={isEditing ? (e) => {
-                  e.stopPropagation();
-                  startEditing(index, 'title', tab.title);
-                } : undefined}
-              >
-                {tab.title || `Aba ${index + 1}`}
-              </span>
-            )}
+            {(() => {
+              const tab = tabs[index] || {};
+              return (
+                <RichTextEditableField
+                  html={tab.title || ''}
+                  onHtmlChange={(h) => updateTab(index, { title: h })}
+                  isActive={
+                    !!(editingTab?.tabIndex === index && editingTab?.field === 'title')
+                  }
+                  builderEditMode={isEditing}
+                  onRequestActivate={() => setEditingTab({ tabIndex: index, field: 'title' })}
+                  onRequestDeactivate={clearEditing}
+                  blockStyle={block.props.style}
+                  allowLinks={false}
+                  placeholder={`Aba ${index + 1}`}
+                  treatAsEmptyPlain={[`Aba ${index + 1}`]}
+                  globalFormattingToolbar={globalFormattingToolbar}
+                  displayClassName="w-full text-sm font-medium text-center"
+                  editorClassName="text-sm font-medium text-center"
+                  stopClickPropagation
+                  singleLine
+                  ariaLabel="Título da aba"
+                />
+              );
+            })()}
           </button>
         ))}
       </div>
 
-      {/* Conteúdo da Aba Ativa */}
+      {/* Conteúdo da Aba Ativa (apenas o conteúdo; título da aba não se repete aqui) */}
       <div className="p-6 min-h-[200px]">
         {tabs[activeTab] && (
-          <div>
-            {editingTab?.tabIndex === activeTab && editingTab?.field === 'content' ? (
-              <textarea
-                value={editingValue}
-                onChange={(e) => setEditingValue(e.target.value)}
-                onBlur={finishEditing}
-                onKeyDown={handleKeyDown}
-                className="w-full bg-transparent border-none outline-none text-sm text-gray-700 resize-none"
-                rows={6}
-                autoFocus
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <div
-                className={isEditing ? 'cursor-pointer hover:bg-gray-50 p-2 rounded' : ''}
-                onClick={isEditing ? (e) => {
-                  e.stopPropagation();
-                  startEditing(activeTab, 'content', tabs[activeTab].content || '');
-                } : undefined}
-              >
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                  {tabs[activeTab].title || `Aba ${activeTab + 1}`}
-                </h3>
-                <p className="text-sm text-gray-700 leading-relaxed">
-                  {tabs[activeTab].content || 'Clique para editar o conteúdo desta aba...'}
-                </p>
-              </div>
-            )}
+          <div onClick={(e) => e.stopPropagation()}>
+            <RichTextEditableField
+              html={tabs[activeTab].content || ''}
+              onHtmlChange={(h) => updateTab(activeTab, { content: h })}
+              isActive={
+                !!(editingTab?.tabIndex === activeTab && editingTab?.field === 'content')
+              }
+              builderEditMode={isEditing}
+              onRequestActivate={() =>
+                setEditingTab({ tabIndex: activeTab, field: 'content' })
+              }
+              onRequestDeactivate={clearEditing}
+              blockStyle={block.props.style}
+              allowLinks={false}
+              placeholder={TAB_CONTENT_PLACEHOLDER}
+              treatAsEmptyPlain={[TAB_CONTENT_PLACEHOLDER]}
+              globalFormattingToolbar={globalFormattingToolbar}
+              displayClassName={`text-sm text-gray-700 leading-relaxed ${
+                isEditing ? 'cursor-text min-h-[120px] hover:bg-gray-50 p-2 rounded' : ''
+              }`}
+              editorClassName="text-sm text-gray-700 min-h-[8em]"
+              stopClickPropagation
+              ariaLabel="Conteúdo da aba"
+            />
           </div>
         )}
       </div>
@@ -1275,15 +1186,15 @@ export const TabsBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelec
   );
 };
 
-export const AccordionBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true }) => {
+export const AccordionBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true, globalFormattingToolbar }) => {
+  const ACC_CONTENT_PLACEHOLDER = 'Clique para editar o conteúdo deste accordion...';
   const items = (block.props as any)?.content?.items || [
     { title: 'Accordion 1', content: 'Conteúdo do accordion 1', isOpen: false },
     { title: 'Accordion 2', content: 'Conteúdo do accordion 2', isOpen: false }
   ];
   const borderOuter: boolean = (block.props as any)?.content?.borderOuter !== false;
-  
-  const [editingItem, setEditingItem] = React.useState<{itemIndex: number, field: 'title' | 'content'} | null>(null);
-  const [editingValue, setEditingValue] = React.useState('');
+
+  const [editingItem, setEditingItem] = React.useState<{ itemIndex: number; field: 'title' | 'content' } | null>(null);
 
   const updateContent = (field: string, value: any) => {
     if (!onUpdate) return;
@@ -1295,39 +1206,23 @@ export const AccordionBlock: React.FC<StubBlockProps> = ({ block, isSelected, on
     });
   };
 
-  const updateItem = (itemIndex: number, field: 'title' | 'content' | 'isOpen', value: any) => {
+  const updateItem = (itemIndex: number, updates: { title?: string; content?: string; isOpen?: boolean }) => {
     const newItems = [...items];
-    newItems[itemIndex] = {
-      ...newItems[itemIndex],
-      [field]: value,
-    };
+    newItems[itemIndex] = { ...newItems[itemIndex], ...updates };
     updateContent('items', newItems);
   };
 
   const toggleItem = (index: number) => {
-    updateItem(index, 'isOpen', !items[index].isOpen);
+    updateItem(index, { isOpen: !items[index].isOpen });
   };
 
-  const startEditing = (itemIndex: number, field: 'title' | 'content', currentValue: string) => {
-    if (!isEditing) return;
-    setEditingItem({ itemIndex, field });
-    setEditingValue(currentValue);
+  const hideToolbar = () => {
+    if (globalFormattingToolbar) globalFormattingToolbar.hide();
   };
 
-  const finishEditing = () => {
-    if (!editingItem) return;
-    updateItem(editingItem.itemIndex, editingItem.field, editingValue);
+  const clearEditing = () => {
     setEditingItem(null);
-    setEditingValue('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      finishEditing();
-    } else if (e.key === 'Escape') {
-      setEditingItem(null);
-      setEditingValue('');
-    }
+    hideToolbar();
   };
 
   return (
@@ -1357,31 +1252,27 @@ export const AccordionBlock: React.FC<StubBlockProps> = ({ block, isSelected, on
               borderOuter && index < items.length - 1 ? 'border-b border-gray-200' : ''
             }`}
           >
-            <div className="flex-1">
-              {editingItem?.itemIndex === index && editingItem?.field === 'title' ? (
-                <input
-                  type="text"
-                  value={editingValue}
-                  onChange={(e) => setEditingValue(e.target.value)}
-                  onBlur={finishEditing}
-                  onKeyDown={handleKeyDown}
-                  className="w-full bg-transparent border-none outline-none text-sm font-semibold text-gray-900"
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <span
-                  className={`text-sm font-semibold text-gray-900 ${
-                    isEditing ? 'cursor-pointer' : ''
-                  }`}
-                  onClick={isEditing ? (e) => {
-                    e.stopPropagation();
-                    startEditing(index, 'title', item.title);
-                  } : undefined}
-                >
-                  {item.title || `Accordion ${index + 1}`}
-                </span>
-              )}
+            <div className="flex-1" onClick={(e) => e.stopPropagation()}>
+              <RichTextEditableField
+                html={item.title || ''}
+                onHtmlChange={(h) => updateItem(index, { title: h })}
+                isActive={
+                  !!(editingItem?.itemIndex === index && editingItem?.field === 'title')
+                }
+                builderEditMode={isEditing}
+                onRequestActivate={() => setEditingItem({ itemIndex: index, field: 'title' })}
+                onRequestDeactivate={clearEditing}
+                blockStyle={block.props.style}
+                allowLinks={false}
+                placeholder={`Accordion ${index + 1}`}
+                treatAsEmptyPlain={[`Accordion ${index + 1}`]}
+                globalFormattingToolbar={globalFormattingToolbar}
+                displayClassName="text-sm font-semibold text-gray-900"
+                editorClassName="text-sm font-semibold text-gray-900"
+                stopClickPropagation
+                singleLine
+                ariaLabel="Título do accordion"
+              />
             </div>
             
             {/* Ícone de chevron */}
@@ -1399,33 +1290,62 @@ export const AccordionBlock: React.FC<StubBlockProps> = ({ block, isSelected, on
 
           {/* Conteúdo do Accordion */}
           {item.isOpen && (
-            <div className={`px-4 pb-4 ${
+            <div className={`p-4 ${
               borderOuter && index < items.length - 1 ? 'border-b border-gray-200' : ''
             }`}>
-              {editingItem?.itemIndex === index && editingItem?.field === 'content' ? (
-                <textarea
-                  value={editingValue}
-                  onChange={(e) => setEditingValue(e.target.value)}
-                  onBlur={finishEditing}
-                  onKeyDown={handleKeyDown}
-                  className="w-full bg-transparent border-none outline-none text-sm text-gray-700 resize-none"
-                  rows={4}
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <div
-                  className={`text-sm text-gray-700 ${
-                    isEditing ? 'cursor-pointer hover:bg-gray-50 p-2 rounded' : ''
-                  }`}
-                  onClick={isEditing ? (e) => {
-                    e.stopPropagation();
-                    startEditing(index, 'content', item.content || '');
-                  } : undefined}
-                >
-                  {item.content || 'Clique para editar o conteúdo deste accordion...'}
+              {/* Imagem do item (quando habilitada): exibe imagem ou placeholder */}
+              {item.image && (
+                <div className="mb-3">
+                  {item.image.src && String(item.image.src).trim() !== '' ? (
+                    <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                      <img
+                        src={item.image.src}
+                        alt={item.image.alt || `Imagem do item ${index + 1}`}
+                        className="w-full h-40 object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className={`w-full h-40 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 text-gray-500 ${
+                        isEditing ? 'cursor-pointer hover:border-indigo-400 hover:bg-indigo-50' : ''
+                      }`}
+                      onClick={isEditing ? (e) => e.stopPropagation() : undefined}
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+
+                      <span className="text-xs font-medium">Imagem do item</span>
+                      <span className="text-xs text-gray-400 mt-0.5">Configure no painel de propriedades</span>
+                    </div>
+                  )}
                 </div>
               )}
+              <div onClick={(e) => e.stopPropagation()}>
+                <RichTextEditableField
+                  html={item.content || ''}
+                  onHtmlChange={(h) => updateItem(index, { content: h })}
+                  isActive={
+                    !!(editingItem?.itemIndex === index && editingItem?.field === 'content')
+                  }
+                  builderEditMode={isEditing}
+                  onRequestActivate={() =>
+                    setEditingItem({ itemIndex: index, field: 'content' })
+                  }
+                  onRequestDeactivate={clearEditing}
+                  blockStyle={block.props.style}
+                  allowLinks={false}
+                  placeholder={ACC_CONTENT_PLACEHOLDER}
+                  treatAsEmptyPlain={[ACC_CONTENT_PLACEHOLDER]}
+                  globalFormattingToolbar={globalFormattingToolbar}
+                  displayClassName={`text-sm text-gray-700 ${
+                    isEditing ? 'cursor-text min-h-[2.5rem] hover:bg-gray-50 p-2 rounded' : ''
+                  }`}
+                  editorClassName="text-sm text-gray-700 min-h-[6em]"
+                  stopClickPropagation
+                  ariaLabel="Conteúdo do accordion"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -2033,7 +1953,9 @@ export const QuizMultipleChoiceBlock: React.FC<StubBlockProps> = ({ block, isSel
 
 export const QuizTrueFalseBlock: React.FC<StubBlockProps> = ({ block, isSelected, onSelect, onUpdate, isEditing = true }) => {
   const question = (block.props as any)?.content?.question || 'Esta afirmação é verdadeira ou falsa?';
-  const correctAnswer = (block.props as any)?.content?.correctAnswer || true;
+  const rawCorrect = (block.props as any)?.content?.correctAnswer;
+  const correctAnswer: boolean | undefined =
+    rawCorrect === true || rawCorrect === false ? rawCorrect : undefined;
   const feedbacks = (block.props as any)?.content?.feedbacks || [
     { text: 'Resposta incorreta!', type: 'incorrect' },
     { text: 'Parabéns! Resposta correta!', type: 'correct' },
@@ -2079,7 +2001,11 @@ export const QuizTrueFalseBlock: React.FC<StubBlockProps> = ({ block, isSelected
     }
   };
 
-  const isCorrect = selectedAnswer !== null && selectedAnswer === correctAnswer;
+  const isCorrect =
+    selectedAnswer !== null &&
+    correctAnswer !== undefined &&
+    correctAnswer !== null &&
+    selectedAnswer === correctAnswer;
 
   return (
     <div
@@ -2131,7 +2057,7 @@ export const QuizTrueFalseBlock: React.FC<StubBlockProps> = ({ block, isSelected
           }}
           className={`px-8 py-4 rounded-lg border-2 font-semibold transition-colors ${
             isEditing
-              ? correctAnswer
+              ? correctAnswer === true
                 ? 'border-green-500 bg-green-50 text-green-700'
                 : 'border-gray-300 hover:bg-gray-50'
               : selectedAnswer === true
@@ -2160,7 +2086,7 @@ export const QuizTrueFalseBlock: React.FC<StubBlockProps> = ({ block, isSelected
           }}
           className={`px-8 py-4 rounded-lg border-2 font-semibold transition-colors ${
             isEditing
-              ? !correctAnswer
+              ? correctAnswer === false
                 ? 'border-red-500 bg-red-50 text-red-700'
                 : 'border-gray-300 hover:bg-gray-50'
               : selectedAnswer === false
@@ -2590,6 +2516,106 @@ export const QuizEssayBlock: React.FC<StubBlockProps> = ({ block, isSelected, on
           <p className="text-xs text-blue-700 text-center">
             Clique na pergunta para editar • Configure limites de palavras no painel de propriedades
           </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const EmbedBlock: React.FC<StubBlockProps> = ({
+  block,
+  isSelected,
+  onSelect,
+  isEditing = true,
+}) => {
+  const iframeCode = (block.props as any)?.content?.iframe || '';
+
+  // Extrai a URL e o tamanho do iframe (aceita tanto o código completo quanto apenas a URL)
+  let iframeSrc = '';
+  let iframeWidth: string | undefined;
+  let iframeHeight: string | undefined;
+
+  if (iframeCode) {
+    if (iframeCode.includes('<iframe')) {
+      // No cliente, usamos o DOM para fazer o parse exato do iframe
+      if (typeof document !== 'undefined') {
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = iframeCode;
+        const iframeEl = wrapper.querySelector('iframe') as HTMLIFrameElement | null;
+        if (iframeEl) {
+          iframeSrc = iframeEl.getAttribute('src') || '';
+          iframeWidth = iframeEl.getAttribute('width') || iframeEl.style.width || undefined;
+          iframeHeight = iframeEl.getAttribute('height') || iframeEl.style.height || undefined;
+        }
+      } else {
+        // Fallback simples para SSR: tenta regex só para não quebrar
+        const srcMatch = iframeCode.match(/src=["']([^"']+)["']/i);
+        iframeSrc = srcMatch?.[1] || '';
+      }
+    } else {
+      iframeSrc = iframeCode.trim();
+    }
+  }
+
+  const normalizeSize = (value?: string): string | undefined => {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    // Se for apenas número, assume pixels
+    if (/^\d+(\.\d+)?$/.test(trimmed)) {
+      return `${trimmed}px`;
+    }
+    return trimmed;
+  };
+
+  const iframeStyle: React.CSSProperties = {};
+  const normalizedWidth = normalizeSize(iframeWidth);
+  const normalizedHeight = normalizeSize(iframeHeight);
+  if (normalizedWidth) iframeStyle.width = normalizedWidth;
+  if (normalizedHeight) iframeStyle.height = normalizedHeight;
+  // Garantir que CSS global não sobrescreva
+  iframeStyle.display = 'block';
+
+  // Garante que o script de resize do H5P seja carregado quando necessário
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const existing = document.querySelector(
+      'script[src="https://h5p.org/sites/all/modules/h5p/library/js/h5p-resizer.js"]'
+    );
+    if (!existing) {
+      const script = document.createElement('script');
+      script.src = 'https://h5p.org/sites/all/modules/h5p/library/js/h5p-resizer.js';
+      script.charset = 'UTF-8';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  return (
+    <div
+      className={`p-4 rounded-lg bg-white ${
+        isEditing
+          ? `border-2 border-dashed border-gray-300 ${
+              isSelected ? 'ring-2 ring-indigo-500 ring-offset-2' : ''
+            }`
+          : 'border border-gray-200'
+      }`}
+      onClick={isEditing ? onSelect : undefined}
+    >
+      {iframeSrc ? (
+        <div>
+          <iframe
+            src={iframeSrc}
+            title="Conteúdo incorporado"
+            style={iframeStyle}
+            allowFullScreen
+          />
+        </div>
+      ) : (
+        <div className="w-full h-40 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 text-gray-500 text-sm text-center px-4">
+          <span className="font-medium mb-1">Embed externo</span>
+          <span className="text-xs text-gray-400">
+            Cole o código do iframe (H5P ou outro serviço) no painel de propriedades.
+          </span>
         </div>
       )}
     </div>

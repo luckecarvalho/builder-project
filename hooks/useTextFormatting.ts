@@ -9,8 +9,12 @@ export interface TextFormats {
   underline?: boolean;
   align?: 'left' | 'center' | 'right' | 'justify';
   fontSize?: number;
+  /** Vários tamanhos na seleção — a UI mostra "-" */
+  fontSizeMixed?: boolean;
   color?: string;
+  colorMixed?: boolean;
   backgroundColor?: string;
+  backgroundColorMixed?: boolean;
   listMarkerStyle?: UnorderedListMarkerStyle;
   orderedListActive?: boolean;
   orderedListStyle?: OrderedListStyle;

@@ -295,4 +295,3 @@ const VideoBlock: React.FC<VideoBlockComponentProps> = ({
 };
 
 export default VideoBlock;
-

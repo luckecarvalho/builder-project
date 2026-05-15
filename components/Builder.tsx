@@ -37,6 +37,7 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
   const [resizeStartHeight, setResizeStartHeight] = useState<number>(0);
   const [showResizeTooltip, setShowResizeTooltip] = useState<string | null>(null);
   const [responsiveMode, setResponsiveMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [showValidationBanner, setShowValidationBanner] = useState(true);
   
   // Estado global para a toolbar de formatação
   const [globalFormattingToolbar, setGlobalFormattingToolbar] = useState<{
@@ -45,6 +46,13 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
     onClose: () => void;
     currentFormats: any;
   } | null>(null);
+
+  // Reexibir banner de validação sempre que surgirem novos erros
+  React.useEffect(() => {
+    if (builder.validationErrors.length > 0) {
+      setShowValidationBanner(true);
+    }
+  }, [builder.validationErrors.length]);
 
   // Listener para detectar quando o foco sai de campos de texto
   React.useEffect(() => {
@@ -124,7 +132,13 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
 
   const handleDragOver = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    // Se estamos arrastando um bloco existente, o efeito correto é "move";
+    // caso contrário (bloco novo da paleta), usamos "copy".
+    if (draggedBlockId) {
+      e.dataTransfer.dropEffect = 'move';
+    } else {
+      e.dataTransfer.dropEffect = 'copy';
+    }
     setDragOverColumn(columnId);
   };
 
@@ -487,6 +501,12 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
 
           {/* Modo preview */}
           <button
+            type="button"
+            onMouseDown={() => {
+              if (isPreview) return;
+              const ae = document.activeElement as HTMLElement | null;
+              if (ae?.isContentEditable) ae.blur();
+            }}
             onClick={() => setIsPreview(!isPreview)}
             className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               isPreview
@@ -518,7 +538,12 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
 
           {/* Salvar */}
           <button
-            onClick={builder.savePage}
+            onClick={() => {
+              const errors = builder.validatePage();
+              if (!errors || errors.length === 0) {
+                builder.savePage();
+              }
+            }}
             className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
             <Save className="w-4 h-4" />
@@ -616,7 +641,10 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={builder.validatePage}
+                onClick={() => {
+                  setShowValidationBanner(true);
+                  builder.validatePage();
+                }}
                 className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200"
               >
                 Validar
@@ -645,7 +673,7 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
           {/* Canvas - viewport simulado para tablet/mobile */}
           <div className="flex-1 overflow-y-auto p-6 flex justify-center bg-gray-100/50">
             <div
-              className="w-full space-y-8 transition-all duration-300 min-h-0"
+              className="w-full space-y-8 transition-all duration-300 min-h-0 h-full"
               style={{
                 maxWidth: responsiveMode === 'mobile' ? 375 : responsiveMode === 'tablet' ? 768 : undefined,
                 padding: (responsiveMode === 'mobile' || responsiveMode === 'tablet') ? 16 : undefined,
@@ -824,7 +852,14 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                         >
                           {column.blocks.length === 0 ? (
                             !isPreview && (
-                              <div className="w-full flex items-center justify-center h-20 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+                              <div
+                                className="w-full flex items-center justify-center h-20 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg"
+                                // Garantir que soltar um bloco existente em uma coluna vazia
+                                // seja tratado como drop válido nesta coluna
+                                onDragOver={(e) => handleDragOver(e, column.id)}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => handleDrop(e, row.id, column.id)}
+                              >
                                 <div className="text-center">
                                   <Plus className="w-6 h-6 mx-auto mb-1" />
                                   <p className="text-sm">Arraste um bloco aqui</p>
@@ -848,12 +883,34 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                               const isDragged = draggedBlockId === block.props.id;
                               const isDragOver = dragOverBlockId === block.props.id;
                               const isResizing = resizingBlockId === block.props.id;
+                              const hasValidationError = builder.validationErrors.some(
+                                (err) =>
+                                  typeof err.field === 'string' &&
+                                  err.field.startsWith(`${row.id}-${column.id}-${block.props.id}-`)
+                              );
                               
                               return (
                                 <div
                                   key={block.props.id}
                                   data-block-id={block.props.id}
-                                  draggable={false}
+                                  draggable={!isPreview && !isResizing}
+                                  onDragStart={(e) => {
+                                    if (!isResizing) {
+                                      // Para blocos de texto, só permitir arrastar pelo ícone de drag
+                                      if (block.props.type === 'text') {
+                                        const target = e.target as HTMLElement | null;
+                                        if (!target || !target.closest('.block-drag-handle')) {
+                                          e.preventDefault();
+                                          return;
+                                        }
+                                      }
+                                      // Impedir que o drag do bloco dispare também o drag da linha
+                                      e.stopPropagation();
+                                      handleBlockDragStart(e, block.props.id, row.id, column.id);
+                                    } else {
+                                      e.preventDefault();
+                                    }
+                                  }}
                                   onDragOver={(e) => handleBlockDragOver(e, block.props.id)}
                                   onDragLeave={handleBlockDragLeave}
                                   onDrop={(e) => handleBlockDrop(e, row.id, column.id, block.props.id)}
@@ -866,7 +923,11 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                   } ${
                                     isDragOver ? 'ring-2 ring-indigo-400 ring-offset-2 bg-indigo-50' : ''
                                   } ${
-                                    !isPreview ? 'hover:border hover:border-gray-300 hover:rounded-md hover:border-dashed' : ''
+                                    !isPreview ? 'hover:!mt-8 hover:border hover:border-gray-300 hover:rounded-md hover:border-dashed' : ''
+                                  } ${
+                                    hasValidationError && !isPreview
+                                      ? 'border border-red-400 bg-red-50'
+                                      : ''
                                   } ${
                                     // Aplicar largura baseada no alinhamento (funciona em ambos os modos)
                                     blockAlignment === 'center'
@@ -876,10 +937,6 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                       : 'w-full'
                                   }`}
                                   style={{
-                                    // Reserva espaço no topo para os controles do bloco,
-                                    // evitando que fiquem sobre o conteúdo
-                                    paddingTop: !isPreview ? '1.75rem' : undefined,
-
                                     // Alinhamento horizontal usando margin auto (funciona em ambos os modos)
                                     marginLeft: (blockAlignment === 'right' || blockAlignment === 'center') && column.alignment !== 'justify' ? 'auto' : undefined,
                                     marginRight: blockAlignment === 'right' && column.alignment !== 'justify' ? '0' : 
@@ -899,20 +956,12 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
                                     minHeight: blockMinHeight ? `${blockMinHeight}px` : undefined,
                                   }}
                                 >
-                                  {/* Controles do Bloco */}
+                                  {/* Controles do Bloco (acima do bloco, ocupando o espaço de margem superior) */}
                                   {!isPreview && (
-                                    <div className="absolute top-0 left-0 flex items-center opacity-0 group-hover/block:opacity-100 transition-opacity z-10 block-controls-container bg-white rounded-lg border border-gray-200 shadow-sm py-1 px-0.5">
+                                    <div className="absolute top-0 left-0 -translate-y-full flex items-center opacity-0 group-hover/block:opacity-100 transition-opacity z-10 block-controls-container bg-white rounded-lg border border-gray-200 shadow-sm py-1 px-0.5">
                                       
                                       <button
-                                        draggable={!isPreview && !isResizing}
-                                        onDragStart={(e) => {
-                                          if (!isResizing) {
-                                            handleBlockDragStart(e, block.props.id, row.id, column.id);
-                                          } else {
-                                            e.preventDefault();
-                                          }
-                                        }}
-                                        className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors flex items-center justify-center cursor-move"
+                                        className="p-2 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors flex items-center justify-center cursor-move block-drag-handle"
                                         title="Reordenar bloco (arrastar o bloco)"
                                       >
                                         <GripVertical className="w-3.5 h-3.5" />
@@ -1258,19 +1307,34 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
             .find(block => block.props.id === builder.selectedBlock);
           
           if (!selectedBlock) return null;
+
+          const rowForBlock = builder.page.rows.find(row =>
+            row.columns.some(col => col.blocks.some(b => b.props.id === selectedBlock.props.id))
+          );
+          const rowId = rowForBlock?.id;
+          const columnId = rowForBlock?.columns.find(col =>
+            col.blocks.some(b => b.props.id === selectedBlock.props.id)
+          )?.id;
+
+          const blockErrorPrefix = rowId && columnId
+            ? `${rowId}-${columnId}-${selectedBlock.props.id}-`
+            : null;
+
+          const panelValidationErrors = blockErrorPrefix
+            ? builder.validationErrors
+                .filter(err => typeof err.field === 'string' && err.field.startsWith(blockErrorPrefix))
+                .map(err => ({
+                  ...err,
+                  field: (err.field as string).substring(blockErrorPrefix.length),
+                }))
+            : [];
           
           return (
             <PropertyPanel
               block={selectedBlock.props}
               isPreview={isPreview}
+              validationErrors={panelValidationErrors}
               onUpdate={(updates) => {
-                const rowId = builder.page.rows.find(row => 
-                  row.columns.some(col => col.blocks.some(b => b.props.id === selectedBlock.props.id))
-                )?.id;
-                const columnId = builder.page.rows
-                  .find(row => row.id === rowId)
-                  ?.columns.find(col => col.blocks.some(b => b.props.id === selectedBlock.props.id))?.id;
-                
                 if (rowId && columnId) {
                   builder.updateBlock(rowId, columnId, selectedBlock.props.id, updates);
                 }
@@ -1352,12 +1416,22 @@ const Builder: React.FC<BuilderProps> = ({ initialPage }) => {
       )}
 
       {/* Validação */}
-      {builder.validationErrors.length > 0 && (
+      {builder.validationErrors.length > 0 && showValidationBanner && (
         <div className="bg-red-50 border-t border-red-200 p-4">
           <div className="max-w-6xl mx-auto">
-            <h4 className="font-medium text-red-800 mb-2">
-              Erros de Validação ({builder.validationErrors.length})
-            </h4>
+            <div className="flex items-start justify-between mb-2">
+              <h4 className="font-medium text-red-800">
+                Erros de Validação ({builder.validationErrors.length})
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowValidationBanner(false)}
+                className="ml-4 text-red-500 hover:text-red-700 rounded-full p-1 hover:bg-red-100 transition-colors"
+                aria-label="Fechar erros de validação"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <div className="space-y-1">
               {builder.validationErrors.map((error, index) => (
                 <p key={index} className="text-sm text-red-700">

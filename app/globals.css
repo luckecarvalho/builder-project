@@ -76,4 +76,32 @@
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.5);
     border-color: transparent;
   }
-} 
+}
+
+/* Rich text do editor no Preview: Tailwind preflight remove listas; restaurar recuo e marcadores */
+.builder-rich-html ul,
+.builder-rich-html ol {
+  margin: 0.35em 0;
+  padding-left: 1.5rem;
+  list-style-position: outside;
+}
+
+.builder-rich-html li {
+  display: list-item;
+}
+
+.builder-rich-html ul:not([style*='list-style-type']) {
+  list-style-type: disc;
+}
+
+.builder-rich-html ol[type='a'] {
+  list-style-type: lower-alpha;
+}
+
+.builder-rich-html ol[type='A'] {
+  list-style-type: upper-alpha;
+}
+
+.builder-rich-html ol:not([style*='list-style-type']):not([type='a']):not([type='A']) {
+  list-style-type: decimal;
+}
